@@ -1,0 +1,9 @@
+# DRAFT-UNVERIFIED — model alias file for CPU screening.
+# Shape to be corrected against the harness models.yaml schema once OPEN 1 resolves.
+# Intent: alias gemma-4-e2b-it-qat-w4a16-ct -> local OpenAI-compatible server.
+models:
+  gemma-4-e2b-it-qat-w4a16-ct:
+    base_url: http://localhost:8000/v1
+    api_key: sk-local
+    timeout: 600
+pricing: {}
