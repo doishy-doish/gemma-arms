@@ -1,0 +1,76 @@
+# DRAFT-UNVERIFIED — CPU screening workflow (E2B on GitHub Actions).
+# Resolve the two OPEN items before use; do not present CPU runs as results.
+name: cpu-screen (ARMC, E2B, mechanics only)
+
+on:
+  workflow_dispatch:
+    inputs:
+      task_ids:
+        description: "Task IDs (space-separated)"
+        default: "fastapi_14986"
+        required: true
+
+jobs:
+  screen:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+
+      # OPEN 1 — harness install source. Candidates, first one that works wins:
+      #   a) pip/VCS install if the competition publishes the harness repo,
+      #   b) `kaggle competitions download` code bundle + PYTHONPATH,
+      #   c) vendor a frozen copy into this repo (cie/ dir).
+      - name: install harness (OPEN)
+        run: |
+          echo "HARNESS_URL=${{ vars.HARNESS_URL }}"
+          test -n "${{ vars.HARNESS_URL }}" || (echo "set repo var HARNESS_URL"; exit 1)
+          pip install "${{ vars.HARNESS_URL }}"
+
+      # OPEN 2 — task data. Published training tasks (tasks.jsonl + snapshots).
+      # Needs either a public dataset URL or KAGGLE_USERNAME/KEY secrets.
+      - name: fetch task data (OPEN)
+        run: |
+          test -n "${{ secrets.KAGGLE_KEY }}" || (echo "add KAGGLE_KEY secret"; exit 1)
+          kaggle competitions download -c gemma-4-developer-agent -p data/
+          unzip -o -q data/*.zip -d data/
+
+      - name: llama.cpp server
+        run: |
+          curl -sL -o llama.tgz https://github.com/ggerganov/llama.cpp/releases/download/b1-latest/llama-b1-bin-ubuntu-x64.zip
+          unzip -o -q llama.tgz -d llama
+          ls llama/build/bin/llama-server
+
+      - name: E2B weights (GGUF QAT q4_0, public)
+        run: |
+          pip install -q "huggingface_hub[cli]"
+          hf download google/gemma-4-E2B-it-qat-q4_0-gguf --local-dir weights/
+
+      - name: serve on :8000 (OpenAI-compatible /v1)
+        run: |
+          ./llama/build/bin/llama-server -m weights/*.gguf --port 8000 \
+            --ctx-size 32768 -ngl 0 -t 4 > server.log 2>&1 &
+          for i in $(seq 1 60); do
+            curl -sf http://localhost:8000/health && break || sleep 10
+          done
+
+      - name: eval (CAL pair or single smoke task)
+        run: |
+          swegemma eval \
+            --tasks data/tasks.jsonl \
+            --task-ids ${{ inputs.task_ids }} \
+            --snapshots-dir data/snapshots \
+            --submission-dir arms/armc \
+            --models-yaml ci/models-cpu.yaml \
+            --sandbox docker \
+            --max-tool-calls 25 --max-time-minutes 15 \
+            --results-dir results/${{ github.run_id }}
+
+      - name: upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cpu-screen-${{ github.run_id }}
+          path: |
+            results/
+            server.log
