@@ -1,0 +1,22 @@
+name: arm1_root
+model: gemma-4-e4b-it-qat-w4a16-ct
+description: ARMH2 causal-test agent — single root, phase gates locate/repro/edit/verify/submit, E4B base, diagnostic envelope. DIAG11 test arm; procedure only, no task content.
+instruction: !include prompts/system.md
+tools:
+  - run_command
+  - read_file
+  - edit_file
+  - write_file
+  - get_code_neighbors
+  - search_similar_code
+  - get_code_subgraph
+  - get_status
+  - submit_patch
+  - load_skill
+  - load_skill_resource
+  - run_skill_script
+skills:
+  - skills/verify
+  - skills/repro
+  - skills/penalty
+generate_content_config: !include configs/sampling.yaml
