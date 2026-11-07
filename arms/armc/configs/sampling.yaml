@@ -1,0 +1,10 @@
+# Reference pins (field-best, BLUEPRINT §12). On fire, transform.py applies these
+# VALUES to the sample's sampling.yaml keys where present and reports the rest.
+# Do not invent keys: unknown keys may break compile_submission.
+temperature: 0.2
+top_p: 0.95
+top_k: 40
+max_output_tokens: 4096
+thinking_budget: 1024
+include_thoughts: true
+# ARMC: CPU-screening pins — smaller thinking/output for CPU latency. NOT score-comparable to H1.
