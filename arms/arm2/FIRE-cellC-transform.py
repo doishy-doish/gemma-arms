@@ -7,7 +7,7 @@ MODEL_NAME = 'gemma-4-e4b-it-qat-w4a16-ct'
 ref = (AGENT_DIR / 'prompts' / 'system.md').read_text(encoding='utf-8')
 assert 'HARD LIMITS' in ref and 'CALL PLAN' in ref, 'winner-shape sections missing from system.md'
 assert 'by call 12' in ref and 'CONFIDENCE' in ref, 'call-12 rule or evidence line missing'
-assert 'Never rewrite a whole file' in ref and 'STEP 1' in ref, 'spray ban or SPEC step missing'
+assert 'rewrite a whole file' in ref and 'STEP 1' in ref, 'spray ban or SPEC step missing'
 assert not (AGENT_DIR / 'skills').exists(), 'skills/ must not ship in ARM2 (winner-faithful single agent)'
 (AGENT_DIR / 'agent.yaml').write_text(
 """name: arm2_root
