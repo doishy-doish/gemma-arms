@@ -1,0 +1,15 @@
+name: arm2_root
+model: gemma-4-e4b-it-qat-w4a16-ct
+description: ARM2 winner-shape replication — SPEC + HARD LIMITS + CALL PLAN + targeted verify, E4B base, diagnostic envelope. DIAG11 test arm; procedure only, no task content.
+instruction: !include prompts/system.md
+tools:
+  - run_command
+  - read_file
+  - edit_file
+  - write_file
+  - get_code_neighbors
+  - search_similar_code
+  - get_code_subgraph
+  - get_status
+  - submit_patch
+generate_content_config: !include configs/sampling.yaml
