@@ -34,10 +34,15 @@ for k, v in {'temperature': '0.2', 'top_p': '0.95', 'top_k': '40', 'max_output_t
     if re.search(pat, samp, flags=re.MULTILINE):
         samp = re.sub(pat, rf'\g<1> {v}', samp, flags=re.MULTILINE); applied.append(k)
     else: missing.append(k)
-if re.search(r'^(\s*(?:thinking_budget|thinking-budget|budget)\s*:).*$', samp, flags=re.MULTILINE):
-    samp = re.sub(r'^(\s*(?:thinking_budget|thinking-budget|budget)\s*:).*$', r'\g<1> 4096', samp, flags=re.MULTILINE); applied.append('thinking->4096')
-else: missing.append('thinking')
+stripped = []
+for _pat in (r'^\s*thinking_budget\s*:.*$', r'^\s*thinking-budget\s*:.*$', r'^\s*include_thoughts\s*:.*$'):
+    if re.search(_pat, samp, flags=re.MULTILINE):
+        samp = re.sub(_pat + r'\n?', '', samp, flags=re.MULTILINE); stripped.append(_pat)
 sp.write_text(samp, encoding='utf-8')
+# ARM2 v2 lesson: the harness schema (SandboxedAgentConfig) REJECTS thinking_budget/
+# include_thoughts under generate_content_config (0/10 INVALID, extra_forbidden).
+# v3 fix: STRIP thinking keys if native carries them; never add/pin them. Fail loud.
+assert 'thinking_budget' not in samp and 'include_thoughts' not in samp, 'thinking keys present in sampling.yaml (harness schema forbids them)'
 (AGENT_DIR / 'eval_config.yaml').write_text(
 """evaluation:
   timeout_seconds: 300
@@ -101,5 +106,5 @@ links = [str(p) for p in AGENT_DIR.rglob('*') if p.is_symlink()]
 total = sum(p.stat().st_size for p in AGENT_DIR.rglob('*') if p.is_file())
 ok = len(roots) == 1 and not links and total < 3 * 1024 ** 3
 print('roots:', roots, '| symlinks:', links, '| total_bytes:', total)
-print('sampling applied:', applied, '| missing:', missing)
+print('sampling applied:', applied, '| missing:', missing, '| stripped:', stripped)
 print('files:', len(files), '| READY' if ok else '| CHECK FAILED (restore WORKING_DIR/agent.yaml.pre-fc.bak, paste report back)')
