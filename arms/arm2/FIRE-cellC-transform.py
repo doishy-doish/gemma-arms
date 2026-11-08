@@ -34,10 +34,10 @@ for k, v in {'temperature': '0.2', 'top_p': '0.95', 'top_k': '40', 'max_output_t
     if re.search(pat, samp, flags=re.MULTILINE):
         samp = re.sub(pat, rf'\g<1> {v}', samp, flags=re.MULTILINE); applied.append(k)
     else: missing.append(k)
-stripped = []
-for _pat in (r'^\s*thinking_budget\s*:.*$', r'^\s*thinking-budget\s*:.*$', r'^\s*include_thoughts\s*:.*$'):
-    if re.search(_pat, samp, flags=re.MULTILINE):
-        samp = re.sub(_pat + r'\n?', '', samp, flags=re.MULTILINE); stripped.append(_pat)
+_lines = samp.splitlines()
+_kept = [l for l in _lines if 'thinking_budget' not in l and 'include_thoughts' not in l and 'thinking-budget' not in l]
+stripped = len(_lines) - len(_kept)
+samp = '\n'.join(_kept) + ('\n' if _kept else '')
 sp.write_text(samp, encoding='utf-8')
 # ARM2 v2 lesson: the harness schema (SandboxedAgentConfig) REJECTS thinking_budget/
 # include_thoughts under generate_content_config (0/10 INVALID, extra_forbidden).
