@@ -38,3 +38,8 @@
   wastes budget; instead report harness baselines if available).
 - Every number in the paper must be re-computed by `reproduce_results.ipynb`
   from frozen per-task CSVs, with assertions. No hand-copied numbers.
+
+## Arms added 2026-11-08 (pre-fire; H1 closed 0/10)
+- ARM2: winner-shape replication on E4B, MAIN set. PASS: >= ARM0+2 paired AND zero empty submits.
+- ARM3: byte-identical prompt to ARM2 on the 31B base. Model isolation. PASS: >= ARM2+2 paired.
+- H2/H3 stay pre-registered but move behind ARM2/ARM3; fire only on explicit fire h2 / fire h3 after the ARM2 readout.
