@@ -5,5 +5,6 @@ temperature: 0.2
 top_p: 0.95
 top_k: 40
 max_output_tokens: 8192
-thinking_budget: 4096
-include_thoughts: true
+# FORBIDDEN by harness schema (SandboxedAgentConfig, ARM2 v2 0/10 INVALID):
+# thinking_budget / include_thoughts must NEVER ship under generate_content_config.
+# transform.py STRIPS them from the native file; never add them here.
