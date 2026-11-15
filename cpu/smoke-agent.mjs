@@ -108,11 +108,12 @@ let calls = 0, done = null;
 log({ system: system.slice(0, 500), problem: problem.slice(0, 500) });
 while (calls < MAX_CALLS && Date.now() - t0 < 20 * 60 * 1000) {
   const { text, ms } = await chat(messages);
-  const m = text.match(/ACTION:\s*([A-Z]+)\s*([^\n]*)/);
+  const m = text.match(/^\s*action:\s*([A-Za-z]+)\s*([^\n]*)/im);
   let result;
-  if (!m) { calls++; result = "ERR: no ACTION line; reply with ACTION: <tool> <args>"; }
+  if (!m) { calls++; result = "ERR: no ACTION line; reply with ACTION: <tool> <args>"; log({ turn: calls, raw: text.slice(0, 2000), action: null }); }
   else {
-    const [, name, rest] = m;
+    const [, rawName, rest] = m;
+    const name = rawName.toUpperCase();
     calls++;
     try { result = name === "DONE" ? "DONE" : tool(name.trim(), (rest || "").trim()); }
     catch (e) { result = "ERR: " + String(e).slice(0, 300); }
@@ -121,7 +122,7 @@ while (calls < MAX_CALLS && Date.now() - t0 < 20 * 60 * 1000) {
   }
   log({ turn: calls, result: String(result).slice(0, 2000) });
   messages.push({ role: "assistant", content: text });
-  messages.push({ role: "user", content: "TOOL RESULT:\n" + String(result).slice(0, 3000) });
+  messages.push({ role: "user", content: "TOOL RESULT:\n" + String(result).slice(0, 3000) + "\nReply with EXACTLY one ACTION line." });
 }
 let diff = "";
 try { diff = execFileSync("git", ["-C", WS, "diff", "--", ".:!*.orig"], { encoding: "utf8", maxBuffer: 1 << 20 }); } catch (e) { diff = "ERR git diff: " + String(e).slice(0, 200); }

@@ -109,13 +109,14 @@ def run_agent(ws, task_id, problem, prompt, max_calls, arm, sc, outdir, wall_s=1
         try: text = chat(messages)
         except Exception as e:
             log({'turn': calls, 'error': str(e)[:300]}); break
-        m = re.search(r'ACTION:\s*([A-Z]+)\s*([^\n]*)', text)
+        m = re.search(r'^\\s*action:\\s*([A-Za-z]+)\\s*([^\\n]*)', text, re.I | re.M)
         if not m:
             calls += 1
             result = 'ERR: no ACTION line; reply with ACTION: <tool> <args>'
             log({'turn': calls, 'raw': text[:2000], 'action': None})
+            log({'turn': calls, 'raw': text[:2000], 'action': None})
         else:
-            name, rest = m.group(1), (m.group(2) or '').strip()
+            name, rest = m.group(1).upper(), (m.group(2) or '').strip()
             if name == 'DONE':
                 calls += 1
                 log({'turn': calls, 'raw': text[:2000], 'action': 'DONE'})
@@ -126,7 +127,7 @@ def run_agent(ws, task_id, problem, prompt, max_calls, arm, sc, outdir, wall_s=1
             log({'turn': calls, 'raw': text[:2000], 'action': name.strip()})
         log({'turn': calls, 'result': str(result)[:2000]})
         messages.append({'role': 'assistant', 'content': text})
-        messages.append({'role': 'user', 'content': 'TOOL RESULT:\n' + str(result)[:3000]})
+        messages.append({'role': 'user', 'content': 'TOOL RESULT:\n' + str(result)[:3000] + '\nReply with EXACTLY one ACTION line.'})
     diff = ''
     try:
         diff = subprocess.run(['git', '-C', ws, 'diff', '--', '.:!*.orig'], capture_output=True, text=True, timeout=60).stdout
