@@ -69,7 +69,7 @@ function tool(name, rest) {
     const parts = rest.split(" ||| ");
     if (parts.length !== 3) return "ERR: EDIT needs <path> ||| <old line> ||| <new line>";
     const [p, oldRaw, newRaw] = parts;
-    const unq = (s) => (s.length >= 2 && s.startsWith('"') && s.endsWith('"')) ? s.slice(1, -1) : s;
+    const unq = (s) => (typeof s !== "string" ? s : ((s.length >= 2 && s.startsWith('"') && s.endsWith('"')) ? s.slice(1, -1) : s));
     const oldL = unq(oldRaw), newL = unq(newRaw);
     const f = path.join(WS, p.trim());
     const lines = fs.readFileSync(f, "utf8").split("\n");
@@ -88,12 +88,16 @@ function tool(name, rest) {
   }
   return "ERR: unknown tool " + name;
 }
-async function chat(messages) {
+async function chat(messages, tries = 5) {
   const t0 = Date.now();
-  const r = await fetch(URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ messages, temperature: 0.2, max_tokens: 512 }) });
-  if (!r.ok) throw new Error("model HTTP " + r.status);
-  const j = await r.json();
-  return { text: j.choices[0].message.content, ms: Date.now() - t0 };
+  let last;
+  for (let i = 0; i < tries; i++) {
+    const r = await fetch(URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ messages, temperature: 0.2, max_tokens: 512 }) });
+    if (r.ok) { const j = await r.json(); return { text: j.choices[0].message.content, ms: Date.now() - t0 }; }
+    last = "model HTTP " + r.status + " " + (await r.text().catch(() => "")).slice(0, 200);
+    await new Promise((r2) => setTimeout(r2, 30000));
+  }
+  throw new Error(last);
 }
 const problem = "ISSUE (" + TASK.id + " in " + TASK.repo + "):\n" + TASK.problem_statement;
 const repoTree = tree(WS, 0, []).join("\n");
@@ -104,7 +108,7 @@ let calls = 0, done = null;
 log({ system: system.slice(0, 500), problem: problem.slice(0, 500) });
 while (calls < MAX_CALLS && Date.now() - t0 < 20 * 60 * 1000) {
   const { text, ms } = await chat(messages);
-  const m = text.match(/ACTION:\s*([A-Z]+)\s*([\s\S]*)/);
+  const m = text.match(/ACTION:\s*([A-Z]+)\s*([^\n]*)/);
   let result;
   if (!m) { calls++; result = "ERR: no ACTION line; reply with ACTION: <tool> <args>"; }
   else {

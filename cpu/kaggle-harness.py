@@ -1,11 +1,18 @@
 import json, os, re, subprocess, sys, time, urllib.request
 URL = 'http://localhost:8000/v1/chat/completions'
-def chat(messages, timeout=600):
+def chat(messages, timeout=600, tries=5):
+    import time as _t, urllib.error as _e
     body = json.dumps({'messages': messages, 'temperature': 0.2, 'max_tokens': 512}).encode()
-    req = urllib.request.Request(URL, data=body, headers={'Content-Type': 'application/json'})
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        j = json.load(r)
-    return j['choices'][0]['message']['content']
+    last = 'no tries'
+    for _ in range(tries):
+        try:
+            req = urllib.request.Request(URL, data=body, headers={'Content-Type': 'application/json'})
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                j = json.load(r)
+            return j['choices'][0]['message']['content']
+        except Exception as ex:
+            last = str(ex)[:200]; _t.sleep(30)
+    raise RuntimeError(last)
 def tree(ws):
     out = []
     def walk(d, depth):
