@@ -55,7 +55,10 @@ def tool(name, rest, ws, sc):
         rest = rest.replace('start-line=', '').replace('end-line=', '')
         parts = rest.split()
         p = parts[0]; a = parts[1] if len(parts) > 1 else '1'; b = parts[2] if len(parts) > 2 else None
-        lines = open(os.path.join(ws, p), encoding='utf-8', errors='replace').read().split('\n')
+        try:
+            lines = open(os.path.join(ws, p), encoding='utf-8', errors='replace').read().split('\n')
+        except Exception:
+            return 'ERR: no such file: %s. Use a path from this repo tree:\n%s' % (p, tree(ws)[:2000])
         s = max(0, int(a) - 1); e = min(len(lines), int(b) if b else s + 150)
         return '\n'.join('%d:%s' % (s+i+1, l) for i, l in enumerate(lines[s:e]))[:10000]
     if name == 'LS':
@@ -83,12 +86,29 @@ def tool(name, rest, ws, sc):
         q = lambda s: s[1:-1] if len(s) >= 2 and s.startswith('"') and s.endswith('"') else s
         oldL, newL = q(oldRaw), q(newRaw)
         f = os.path.join(ws, p)
-        lines = open(f, encoding='utf-8', errors='replace').read().split('\n')
+        try:
+            lines = open(f, encoding='utf-8', errors='replace').read().split('\n')
+        except Exception:
+            return 'ERR: no such file: %s. Use a path from this repo tree:\n%s' % (p, tree(ws)[:2000])
         hits = [i for i, l in enumerate(lines) if l == oldL]
-        if len(hits) != 1: return 'ERR: old line matches %d lines (need exactly 1)' % len(hits)
+        how = 'exact'
+        if len(hits) != 1:
+            want = oldL.strip()
+            hits = [i for i, l in enumerate(lines) if l.strip() == want]
+            how = 'flex'
+        if len(hits) != 1:
+            toks = sorted([re.sub(r'[^A-Za-z0-9_]', '', w) for w in oldL.split()], key=len, reverse=True)
+            tok = next((w for w in toks if len(w) >= 4), '')
+            near = []
+            if tok:
+                for i, l in enumerate(lines):
+                    if len(near) >= 3: break
+                    if tok in l: near.append('%d:%s' % (i+1, l[:160]))
+            hint = ('. Closest lines with %r:\n%s' % (tok, '\n'.join(near))) if near else '. No close lines.'
+            return 'ERR: old line matches %d lines (need exactly 1)' % len(hits) + hint
         lines[hits[0]] = newL
         open(f, 'w', encoding='utf-8').write('\n'.join(lines))
-        return 'OK edited %s:%d' % (p, hits[0]+1)
+        return 'OK edited %s:%d (%s)' % (p, hits[0]+1, how)
     if name == 'WRITE':
         sp = rest.find(' ')
         p, body = rest[:sp].strip(), rest[sp+1:]

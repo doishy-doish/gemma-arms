@@ -34,7 +34,9 @@ function tool(name, rest) {
   if (name === "READ") {
     const clean = rest.replace(/[\[\]"]/g, "").replace(/start-line=|end-line=/g, "");
     const [p, a, b] = clean.split(/\s+/);
-    const lines = fs.readFileSync(path.join(WS, p), "utf8").split("\n");
+    let lines;
+    try { lines = fs.readFileSync(path.join(WS, p), "utf8").split("\n"); }
+    catch (e) { return "ERR: no such file: " + (p || "(empty)") + ". Use a path from this repo tree:\n" + tree(WS, 0, []).join("\n").slice(0, 2000); }
     const s = Math.max(0, (parseInt(a || "1", 10) - 1)), e = Math.min(lines.length, parseInt(b || String(s + 150), 10));
     return lines.slice(s, e).map((l, i) => (s + i + 1) + ":" + l).join("\n").slice(0, 10000);
   }
@@ -72,12 +74,22 @@ function tool(name, rest) {
     const unq = (s) => (typeof s !== "string" ? s : ((s.length >= 2 && s.startsWith('"') && s.endsWith('"')) ? s.slice(1, -1) : s));
     const oldL = unq(oldRaw), newL = unq(newRaw);
     const f = path.join(WS, p.trim());
-    const lines = fs.readFileSync(f, "utf8").split("\n");
-    const hits = lines.reduce((a, l, i) => (l === oldL ? a.concat(i) : a), []);
-    if (hits.length !== 1) return "ERR: old line matches " + hits.length + " lines (need exactly 1)";
-    lines[hits[0]] = newL;
-    fs.writeFileSync(f, lines.join("\n"));
-    return "OK edited " + p.trim() + ":" + (hits[0] + 1);
+    let elines;
+    try { elines = fs.readFileSync(f, "utf8").split("\n"); }
+    catch (e) { return "ERR: no such file: " + p.trim() + ". Use a path from this repo tree:\n" + tree(WS, 0, []).join("\n").slice(0, 2000); }
+    let ehits = elines.reduce((ac, l, i) => (l === oldL ? ac.concat(i) : ac), []);
+    let how = "exact";
+    if (ehits.length !== 1) { const want = oldL.trim(); ehits = elines.reduce((ac, l, i) => (l.trim() === want ? ac.concat(i) : ac), []); how = "flex"; }
+    if (ehits.length !== 1) {
+      const toks = oldL.split(/\s+/).map((w) => w.replace(/[^A-Za-z0-9_]/g, "")).filter((w) => w.length >= 4).sort((x, y) => y.length - x.length);
+      const tok = toks.length ? toks[0] : "";
+      const near = [];
+      if (tok) elines.forEach((l, i) => { if (near.length < 3 && l.includes(tok)) near.push((i + 1) + ":" + l.slice(0, 160)); });
+      return "ERR: old line matches " + ehits.length + " lines (need exactly 1)" + (near.length ? ". Closest lines with \u0027" + tok + "\u0027:\n" + near.join("\n") : ". No close lines.");
+    }
+    elines[ehits[0]] = newL;
+    fs.writeFileSync(f, elines.join("\n"));
+    return "OK edited " + p.trim() + ":" + (ehits[0] + 1) + " (" + how + ")";
   }
   if (name === "WRITE") {
     const sp = rest.indexOf(" ");
