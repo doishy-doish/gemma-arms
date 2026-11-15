@@ -109,6 +109,22 @@ def tool(name, rest, ws, sc):
         lines[hits[0]] = newL
         open(f, 'w', encoding='utf-8').write('\n'.join(lines))
         return 'OK edited %s:%d (%s)' % (p, hits[0]+1, how)
+    if name == 'EDITLINE':
+        parts = rest.split(' ||| ')
+        if len(parts) != 3: return 'ERR: EDITLINE needs <path> ||| <line number> ||| <new line>'
+        p, nRaw, newL = parts[0].strip(), parts[1].strip(), parts[2]
+        f = os.path.join(ws, p)
+        try:
+            lines = open(f, encoding='utf-8', errors='replace').read().split('\n')
+        except Exception:
+            return 'ERR: no such file: %s. Use a path from this repo tree:\n%s' % (p, tree(ws)[:2000])
+        try: n = int(nRaw)
+        except Exception: return 'ERR: line number must be an integer, got %r' % nRaw[:40]
+        if not (1 <= n <= len(lines)): return 'ERR: line number out of range 1..%d' % len(lines)
+        was = lines[n-1]
+        lines[n-1] = newL
+        open(f, 'w', encoding='utf-8').write('\n'.join(lines))
+        return 'OK edited %s:%d (line) was: %s' % (p, n, was[:160])
     if name == 'WRITE':
         sp = rest.find(' ')
         p, body = rest[:sp].strip(), rest[sp+1:]
@@ -124,7 +140,7 @@ def run_agent(ws, task_id, problem, prompt, max_calls, arm, sc, outdir, wall_s=1
     system = prompt + '\n\nRepo tree (top 2 levels):\n' + tree(ws)
     log({'system': system[:500], 'problem': problem[:500]})
     messages = [{'role': 'system', 'content': system}, {'role': 'user', 'content': problem}]
-    calls, done, t0, lastKey = 0, None, time.time(), ''
+    calls, done, t0, lastKey, navigated = 0, None, time.time(), '', False
     while calls < max_calls and time.time() - t0 < wall_s:
         try: text = chat(messages)
         except Exception as e:
@@ -151,12 +167,18 @@ def run_agent(ws, task_id, problem, prompt, max_calls, arm, sc, outdir, wall_s=1
                     done = rest[:300]; break
             calls += 1
             akey = name.strip() + ' ' + rest
-            if akey == lastKey and name.strip() != 'DONE':
-                result = 'ERR: repeated action — same ACTION+args twice in a row is banned, switch tools (READ->GREP->EDIT, never re-read the same range)'
+            if name == 'DONE':
+                pass  # batch 6: rejected above; result already carries the guidance
+            elif not navigated and name.strip() not in ('LS', 'SIDECAR', 'GREP'):
+                result = 'ERR: first action must navigate (LS, SIDECAR, or GREP) — example paths are placeholders, never use them blind'
             else:
-                lastKey = akey
-                try: result = tool(name.strip(), rest, ws, sc)
-                except Exception as e: result = 'ERR: ' + str(e)[:300]
+                if name.strip() in ('LS', 'SIDECAR', 'GREP'): navigated = True
+                if akey == lastKey:
+                    result = 'ERR: repeated action — same ACTION+args twice in a row is banned, switch tools (READ->GREP->EDIT, never re-read the same range)'
+                else:
+                    lastKey = akey
+                    try: result = tool(name.strip(), rest, ws, sc)
+                    except Exception as e: result = 'ERR: ' + str(e)[:300]
             log({'turn': calls, 'raw': text[:2000], 'action': name.strip()})
         log({'turn': calls, 'result': str(result)[:2000]})
         # batch 4: never re-feed the full model echo (runaway text killed GH pilots

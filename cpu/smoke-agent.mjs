@@ -91,6 +91,21 @@ function tool(name, rest) {
     fs.writeFileSync(f, elines.join("\n"));
     return "OK edited " + p.trim() + ":" + (ehits[0] + 1) + " (" + how + ")";
   }
+  if (name === "EDITLINE") {
+    const parts = rest.split(" ||| ");
+    if (parts.length !== 3) return "ERR: EDITLINE needs <path> ||| <line number> ||| <new line>";
+    const [p, nRaw, newL] = parts;
+    const f = path.join(WS, p.trim());
+    let lines;
+    try { lines = fs.readFileSync(f, "utf8").split("\n"); }
+    catch (e) { return "ERR: no such file: " + p.trim() + ". Use a path from this repo tree:\n" + tree(WS, 0, []).join("\n").slice(0, 2000); }
+    const n = parseInt(nRaw.trim(), 10);
+    if (!(n >= 1 && n <= lines.length)) return "ERR: line number out of range 1.." + lines.length;
+    const was = lines[n - 1];
+    lines[n - 1] = newL;
+    fs.writeFileSync(f, lines.join("\n"));
+    return "OK edited " + p.trim() + ":" + n + " (line) was: " + was.slice(0, 160);
+  }
   if (name === "WRITE") {
     const sp = rest.indexOf(" ");
     const p = rest.slice(0, sp).trim(), body = rest.slice(sp + 1);
@@ -116,7 +131,7 @@ const repoTree = tree(WS, 0, []).join("\n");
 const system = PROMPT + "\n\nRepo tree (top 2 levels):\n" + repoTree;
 const t0 = Date.now();
 let messages = [{ role: "system", content: system }, { role: "user", content: problem }];
-let calls = 0, done = null, lastKey = "";
+let calls = 0, done = null, lastKey = "", navigated = false;
 log({ system: system.slice(0, 500), problem: problem.slice(0, 500) });
 while (calls < MAX_CALLS && Date.now() - t0 < 20 * 60 * 1000) {
   const { text, ms } = await chat(messages);
@@ -130,7 +145,8 @@ while (calls < MAX_CALLS && Date.now() - t0 < 20 * 60 * 1000) {
     calls++;
     const akey = name.trim() + " " + (rest || "").trim();
     if (akey === lastKey && name.trim() !== "DONE") { result = "ERR: repeated action — same ACTION+args twice in a row is banned, switch tools (READ→GREP→EDIT, never re-read the same range)"; }
-    else { lastKey = akey; try { result = name === "DONE" ? "DONE" : tool(name.trim(), (rest || "").trim()); } catch (e) { result = "ERR: " + String(e).slice(0, 300); } }
+    else if (!navigated && ["LS", "SIDECAR", "GREP"].indexOf(name.trim()) < 0) { result = "ERR: first action must navigate (LS, SIDECAR, or GREP) — example paths are placeholders, never use them blind"; }
+    else { if (["LS", "SIDECAR", "GREP"].indexOf(name.trim()) >= 0) navigated = true; lastKey = akey; try { result = name === "DONE" ? "DONE" : tool(name.trim(), (rest || "").trim()); } catch (e) { result = "ERR: " + String(e).slice(0, 300); } }
     log({ turn: calls, raw: text.slice(0, 2000), action: name.trim(), ms });
     // batch 6: DONE with an empty working-tree patch is REJECTED (no free exits).
     if (name.trim() === "DONE") {
