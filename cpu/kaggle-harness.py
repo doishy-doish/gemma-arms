@@ -113,10 +113,11 @@ def run_agent(ws, task_id, problem, prompt, max_calls, arm, sc, outdir, wall_s=1
         if not m:
             calls += 1
             result = 'ERR: no ACTION line; reply with ACTION: <tool> <args>'
-            log({'turn': calls, 'raw': text[:2000], 'action': None})
+            echo = 'ACTION: (none parsed)'
             log({'turn': calls, 'raw': text[:2000], 'action': None})
         else:
             name, rest = m.group(1).upper(), (m.group(2) or '').strip()
+            echo = 'ACTION: ' + name.strip() + ' ' + rest[:300]
             if name == 'DONE':
                 calls += 1
                 log({'turn': calls, 'raw': text[:2000], 'action': 'DONE'})
@@ -126,8 +127,14 @@ def run_agent(ws, task_id, problem, prompt, max_calls, arm, sc, outdir, wall_s=1
             except Exception as e: result = 'ERR: ' + str(e)[:300]
             log({'turn': calls, 'raw': text[:2000], 'action': name.strip()})
         log({'turn': calls, 'result': str(result)[:2000]})
-        messages.append({'role': 'assistant', 'content': text})
+        # batch 4: never re-feed the full model echo (runaway text killed GH pilots
+        # at 4944>4096). ACTION line only + sliding window under ~20k chars.
+        messages.append({'role': 'assistant', 'content': echo})
         messages.append({'role': 'user', 'content': 'TOOL RESULT:\n' + str(result)[:3000] + '\nReply with EXACTLY one ACTION line.'})
+        chars = sum(len(mm.get('content', '')) for mm in messages)
+        while len(messages) > 4 and chars > 20000:
+            for dd in messages[2:4]: chars -= len(dd.get('content', ''))
+            del messages[2:4]
     diff = ''
     try:
         diff = subprocess.run(['git', '-C', ws, 'diff', '--', '.:!*.orig'], capture_output=True, text=True, timeout=60).stdout

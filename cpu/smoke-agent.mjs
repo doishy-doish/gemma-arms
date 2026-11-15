@@ -109,11 +109,12 @@ log({ system: system.slice(0, 500), problem: problem.slice(0, 500) });
 while (calls < MAX_CALLS && Date.now() - t0 < 20 * 60 * 1000) {
   const { text, ms } = await chat(messages);
   const m = text.match(/^\s*action:\s*([A-Za-z]+)\s*([^\n]*)/im);
-  let result;
-  if (!m) { calls++; result = "ERR: no ACTION line; reply with ACTION: <tool> <args>"; log({ turn: calls, raw: text.slice(0, 2000), action: null }); }
+  let result, echo;
+  if (!m) { calls++; result = "ERR: no ACTION line; reply with ACTION: <tool> <args>"; echo = "ACTION: (none parsed)"; log({ turn: calls, raw: text.slice(0, 2000), action: null }); }
   else {
     const [, rawName, rest] = m;
     const name = rawName.toUpperCase();
+    echo = "ACTION: " + name.trim() + " " + (rest || "").trim().slice(0, 300);
     calls++;
     try { result = name === "DONE" ? "DONE" : tool(name.trim(), (rest || "").trim()); }
     catch (e) { result = "ERR: " + String(e).slice(0, 300); }
@@ -121,8 +122,16 @@ while (calls < MAX_CALLS && Date.now() - t0 < 20 * 60 * 1000) {
     if (name.trim() === "DONE") { done = rest.trim().slice(0, 300); break; }
   }
   log({ turn: calls, result: String(result).slice(0, 2000) });
-  messages.push({ role: "assistant", content: text });
+  // batch 4: never re-feed the full model echo (runaway text amplified context to
+  // 4944>4096 and killed two pilots). Send back only the parsed ACTION line, and
+  // sliding-window the history under ~20k chars (system + problem always kept).
+  messages.push({ role: "assistant", content: echo });
   messages.push({ role: "user", content: "TOOL RESULT:\n" + String(result).slice(0, 3000) + "\nReply with EXACTLY one ACTION line." });
+  let histChars = 0;
+  for (const mm of messages) histChars += (mm.content || "").length;
+  while (messages.length > 4 && histChars > 20000) {
+    for (const dd of messages.splice(2, 2)) histChars -= (dd.content || "").length;
+  }
 }
 let diff = "";
 try { diff = execFileSync("git", ["-C", WS, "diff", "--", ".:!*.orig"], { encoding: "utf8", maxBuffer: 1 << 20 }); } catch (e) { diff = "ERR git diff: " + String(e).slice(0, 200); }

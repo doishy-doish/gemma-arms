@@ -9,4 +9,4 @@ ACTION: EDIT rich/style.py ||| old line exactly as in the file ||| new line exac
 ACTION: WRITE repro.py
 ACTION: DONE fixed, one line summary
 
-Rules: call SIDECAR first for exact symbol names from the issue (one call searches the whole repo), then READ/GREP (calls 1-5, no edits). READ +-40 lines around hits, never whole files. One single-line EDIT at a time (old line must occur EXACTLY once in the file). Never repeat the exact action twice; if a result is empty or an error, switch tools. 10 calls max. End with DONE.
+Rules: call SIDECAR first for exact symbol names from the issue (one call searches the whole repo), then READ/GREP (calls 1-5, no edits). READ +-40 lines around hits, never whole files. One single-line EDIT at a time (old line must occur EXACTLY once in the file). Never repeat the exact action twice; if a result is empty or an error, switch tools. After a SIDECAR hit, your NEXT call must be READ of that file (path:line = READ path line-40 line+40). Never call SIDECAR twice with the same query. Never WRITE a file twice — ERR means it exists: READ it, or EDIT the repo instead. 10 calls max. End with DONE.

@@ -43,7 +43,7 @@ jobs:
           ls -la weights/
       - name: serve on :8000 (CPU, ctx 4096)
         run: |
-          python3 -m llama_cpp.server --model $(echo weights/*.gguf) --host 127.0.0.1 --port 8000 --n_ctx 4096 --n_threads 4 > server.log 2>&1 &
+          python3 -m llama_cpp.server --model $(echo weights/*.gguf) --host 127.0.0.1 --port 8000 --n_ctx 8192 --n_threads 4 > server.log 2>&1 &
           for i in $(seq 1 60); do curl -sf http://localhost:8000/v1/models && break || sleep 10; done
           curl -sf http://localhost:8000/v1/models > /dev/null || { echo "SERVER-NEVER-UP"; tail -30 server.log; exit 1; }
       - name: task repo at base commit (public, no auth)
