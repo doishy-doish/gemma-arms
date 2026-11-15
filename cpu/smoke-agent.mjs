@@ -104,7 +104,7 @@ const repoTree = tree(WS, 0, []).join("\n");
 const system = PROMPT + "\n\nRepo tree (top 2 levels):\n" + repoTree;
 const t0 = Date.now();
 let messages = [{ role: "system", content: system }, { role: "user", content: problem }];
-let calls = 0, done = null;
+let calls = 0, done = null, lastKey = "";
 log({ system: system.slice(0, 500), problem: problem.slice(0, 500) });
 while (calls < MAX_CALLS && Date.now() - t0 < 20 * 60 * 1000) {
   const { text, ms } = await chat(messages);
@@ -116,8 +116,9 @@ while (calls < MAX_CALLS && Date.now() - t0 < 20 * 60 * 1000) {
     const name = rawName.toUpperCase();
     echo = "ACTION: " + name.trim() + " " + (rest || "").trim().slice(0, 300);
     calls++;
-    try { result = name === "DONE" ? "DONE" : tool(name.trim(), (rest || "").trim()); }
-    catch (e) { result = "ERR: " + String(e).slice(0, 300); }
+    const akey = name.trim() + " " + (rest || "").trim();
+    if (akey === lastKey && name.trim() !== "DONE") { result = "ERR: repeated action — same ACTION+args twice in a row is banned, switch tools (READ→GREP→EDIT, never re-read the same range)"; }
+    else { lastKey = akey; try { result = name === "DONE" ? "DONE" : tool(name.trim(), (rest || "").trim()); } catch (e) { result = "ERR: " + String(e).slice(0, 300); } }
     log({ turn: calls, raw: text.slice(0, 2000), action: name.trim(), ms });
     if (name.trim() === "DONE") { done = rest.trim().slice(0, 300); break; }
   }

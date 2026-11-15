@@ -67,7 +67,7 @@ jobs:
           node cpu/smoke-agent.mjs --ws /tmp/ws --task /tmp/task-agent.json --prompt /tmp/prompt.md --url http://localhost:8000/v1/chat/completions --max-calls 10 --arm "$ARMNAME" $SC --out results/
       - name: grade (L0..L3 ladder)
         run: |
-          pip install -q pytest
+          pip install -q pytest httpx
           (cd /tmp/ws && pip install -q -e . 2>&1 | tail -1) || true
           WS=/tmp/ws RES=results TASK_JSON=/tmp/task.json bash cpu/grade.sh 2>&1 | tee results/grade.log
       - name: upload

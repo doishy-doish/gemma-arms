@@ -104,7 +104,7 @@ def run_agent(ws, task_id, problem, prompt, max_calls, arm, sc, outdir, wall_s=1
     system = prompt + '\n\nRepo tree (top 2 levels):\n' + tree(ws)
     log({'system': system[:500], 'problem': problem[:500]})
     messages = [{'role': 'system', 'content': system}, {'role': 'user', 'content': problem}]
-    calls, done, t0 = 0, None, time.time()
+    calls, done, t0, lastKey = 0, None, time.time(), ''
     while calls < max_calls and time.time() - t0 < wall_s:
         try: text = chat(messages)
         except Exception as e:
@@ -123,8 +123,13 @@ def run_agent(ws, task_id, problem, prompt, max_calls, arm, sc, outdir, wall_s=1
                 log({'turn': calls, 'raw': text[:2000], 'action': 'DONE'})
                 done = rest[:300]; break
             calls += 1
-            try: result = tool(name.strip(), rest, ws, sc)
-            except Exception as e: result = 'ERR: ' + str(e)[:300]
+            akey = name.strip() + ' ' + rest
+            if akey == lastKey and name.strip() != 'DONE':
+                result = 'ERR: repeated action — same ACTION+args twice in a row is banned, switch tools (READ->GREP->EDIT, never re-read the same range)'
+            else:
+                lastKey = akey
+                try: result = tool(name.strip(), rest, ws, sc)
+                except Exception as e: result = 'ERR: ' + str(e)[:300]
             log({'turn': calls, 'raw': text[:2000], 'action': name.strip()})
         log({'turn': calls, 'result': str(result)[:2000]})
         # batch 4: never re-feed the full model echo (runaway text killed GH pilots
