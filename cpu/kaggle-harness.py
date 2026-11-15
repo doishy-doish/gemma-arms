@@ -121,7 +121,14 @@ def run_agent(ws, task_id, problem, prompt, max_calls, arm, sc, outdir, wall_s=1
             if name == 'DONE':
                 calls += 1
                 log({'turn': calls, 'raw': text[:2000], 'action': 'DONE'})
-                done = rest[:300]; break
+                try:
+                    _now = subprocess.run(['git', '-C', ws, 'diff', '--', '.:!*.orig'], capture_output=True, text=True, timeout=60).stdout
+                except Exception:
+                    _now = ''
+                if not _now.strip():
+                    result = 'ERR: DONE rejected. Working tree has no patch (0 chars). Make at least one EDIT that changes repo source, then DONE.'
+                else:
+                    done = rest[:300]; break
             calls += 1
             akey = name.strip() + ' ' + rest
             if akey == lastKey and name.strip() != 'DONE':

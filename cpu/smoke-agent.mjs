@@ -120,7 +120,13 @@ while (calls < MAX_CALLS && Date.now() - t0 < 20 * 60 * 1000) {
     if (akey === lastKey && name.trim() !== "DONE") { result = "ERR: repeated action — same ACTION+args twice in a row is banned, switch tools (READ→GREP→EDIT, never re-read the same range)"; }
     else { lastKey = akey; try { result = name === "DONE" ? "DONE" : tool(name.trim(), (rest || "").trim()); } catch (e) { result = "ERR: " + String(e).slice(0, 300); } }
     log({ turn: calls, raw: text.slice(0, 2000), action: name.trim(), ms });
-    if (name.trim() === "DONE") { done = rest.trim().slice(0, 300); break; }
+    // batch 6: DONE with an empty working-tree patch is REJECTED (no free exits).
+    if (name.trim() === "DONE") {
+      let now = "";
+      try { now = execFileSync("git", ["-C", WS, "diff", "--", ".:!*.orig"], { encoding: "utf8", maxBuffer: 1 << 20 }); } catch (e) { now = "ERR"; }
+      if (!now.trim() || now.startsWith("ERR")) { result = "ERR: DONE rejected. Working tree has no patch (0 chars). Make at least one EDIT that changes repo source, then DONE."; }
+      else { done = rest.trim().slice(0, 300); break; }
+    }
   }
   log({ turn: calls, result: String(result).slice(0, 2000) });
   // batch 4: never re-feed the full model echo (runaway text amplified context to
