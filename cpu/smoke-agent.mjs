@@ -32,7 +32,8 @@ function tree(dir, depth, out) {
 }
 function tool(name, rest) {
   if (name === "READ") {
-    const [p, a, b] = rest.split(/\s+/);
+    const clean = rest.replace(/[\[\]"]/g, "").replace(/start-line=|end-line=/g, "");
+    const [p, a, b] = clean.split(/\s+/);
     const lines = fs.readFileSync(path.join(WS, p), "utf8").split("\n");
     const s = Math.max(0, (parseInt(a || "1", 10) - 1)), e = Math.min(lines.length, parseInt(b || String(s + 150), 10));
     return lines.slice(s, e).map((l, i) => (s + i + 1) + ":" + l).join("\n").slice(0, 10000);
@@ -67,7 +68,9 @@ function tool(name, rest) {
   if (name === "EDIT") {
     const parts = rest.split(" ||| ");
     if (parts.length !== 3) return "ERR: EDIT needs <path> ||| <old line> ||| <new line>";
-    const [p, oldL, newL] = parts;
+    const [p, oldRaw, newRaw] = parts;
+    const unq = (s) => (s.length >= 2 && s.startsWith('"') && s.endsWith('"')) ? s.slice(1, -1) : s;
+    const oldL = unq(oldRaw), newL = unq(newRaw);
     const f = path.join(WS, p.trim());
     const lines = fs.readFileSync(f, "utf8").split("\n");
     const hits = lines.reduce((a, l, i) => (l === oldL ? a.concat(i) : a), []);
@@ -103,7 +106,7 @@ while (calls < MAX_CALLS && Date.now() - t0 < 20 * 60 * 1000) {
   const { text, ms } = await chat(messages);
   const m = text.match(/ACTION:\s*([A-Z]+)\s*([\s\S]*)/);
   let result;
-  if (!m) result = "ERR: no ACTION line; reply with ACTION: <tool> <args>";
+  if (!m) { calls++; result = "ERR: no ACTION line; reply with ACTION: <tool> <args>"; }
   else {
     const [, name, rest] = m;
     calls++;

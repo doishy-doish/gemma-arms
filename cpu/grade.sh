@@ -14,7 +14,7 @@ for _t in $TPY; do (cd "$WS" && python -m pytest "$_t" -q 2>&1 | tail -2); done 
 echo "== apply hidden test patch (grade phase only) =="
 python - "$TASK_JSON" "$WS" <<'EOF'
 import json,sys
-t=json.load(open(sys.argv[1])); open('/tmp/test_patch.diff','w').write(t['test_patch'])
+t=json.load(open(sys.argv[1])); tp=t['test_patch']; open('/tmp/test_patch.diff','w').write(tp if tp.endswith('\n') else tp+'\n')
 EOF
 (cd "$WS" && git apply --check /tmp/test_patch.diff 2>&1 && git apply /tmp/test_patch.diff && echo TESTPATCH-APPLIED || echo TESTPATCH-FAIL)
 for _t in $TPY; do (cd "$WS" && python -m pytest "$_t" -q 2>&1 | tail -5); done | tee "$RES/pytest-graded.log"
