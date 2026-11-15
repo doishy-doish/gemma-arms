@@ -60,16 +60,17 @@ jobs:
           python3 --version
           pip install -q "llama-cpp-python[server]==0.2.62" --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
           python3 -c "import llama_cpp, llama_cpp.server; print('server ok', llama_cpp.__version__)"
-      - name: small weights (first success wins, ~400MB)
+      - name: small weights (official first, ~400MB)
         run: |
           pip install -q "huggingface_hub[cli]"
-          (hf download bartowski/Qwen2.5-0.5B-Instruct-GGUF Qwen2.5-0.5B-Instruct-Q4_K_M.gguf --local-dir weights/ 2>&1 | tail -1) || \
-          hf download Qwen/Qwen2.5-0.5B-Instruct-GGUF qwen2.5-0.5b-instruct-q4_k_m.gguf --local-dir weights/ 2>&1 | tail -1
+          (hf download Qwen/Qwen2.5-0.5B-Instruct-GGUF qwen2.5-0.5b-instruct-q4_k_m.gguf --local-dir weights/ 2>&1 | tail -1) || \
+          hf download bartowski/Qwen2.5-0.5B-Instruct-GGUF Qwen2.5-0.5B-Instruct-Q4_K_M.gguf --local-dir weights/ 2>&1 | tail -1
           ls -la weights/
       - name: serve on :8000 (CPU, ctx 4096)
         run: |
           python3 -m llama_cpp.server --model $(echo weights/*.gguf) --host 127.0.0.1 --port 8000 --n_ctx 4096 --n_threads 4 > server.log 2>&1 &
           for i in $(seq 1 60); do curl -sf http://localhost:8000/v1/models && break || sleep 10; done
+          curl -sf http://localhost:8000/v1/models > /dev/null || { echo "SERVER-NEVER-UP"; tail -30 server.log; exit 1; }
       - name: task repo at base commit (public, no auth)
         run: |
           REPO=$(python3 -c "import json;print(json.load(open('/tmp/task.json'))['repo'])")
