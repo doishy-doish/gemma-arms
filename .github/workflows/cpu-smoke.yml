@@ -30,13 +30,11 @@ jobs:
           test -s /tmp/task.json || { echo "unknown task"; exit 1; }
           python3 -c "import json;t=json.load(open('/tmp/task.json'));print(t['id'],t['repo'],t['base_commit'][:8],t['test_files'])"
           python3 -c "import json;t=json.load(open('/tmp/task.json'));json.dump({'id':t['id'],'repo':t['repo'],'problem_statement':t['problem_statement']},open('/tmp/task-agent.json','w'))"
-      - name: llama.cpp (pinned at run, not rolling)
+      - name: model server wheel (pinned 0.2.62, CPU, no build)
         run: |
-          TAG=$(curl -sf https://api.github.com/repos/ggerganov/llama.cpp/releases/latest | python3 -c "import json,sys;print(json.load(sys.stdin)['tag_name'])")
-          echo "llama tag: $TAG"
-          curl -sL -o llama.zip "https://github.com/ggerganov/llama.cpp/releases/download/${TAG}/llama-${TAG}-bin-ubuntu-x64.zip"
-          unzip -o -q llama.zip -d llama
-          ls llama/build/bin/llama-server
+          python3 --version
+          pip install -q "llama-cpp-python[server]==0.2.62" --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
+          python3 -c "import llama_cpp, llama_cpp.server; print('server ok', llama_cpp.__version__)"
       - name: small weights (first success wins, ~400MB)
         run: |
           pip install -q "huggingface_hub[cli]"
@@ -45,8 +43,8 @@ jobs:
           ls -la weights/
       - name: serve on :8000 (CPU, ctx 4096)
         run: |
-          ./llama/build/bin/llama-server -m weights/*.gguf --port 8000 --ctx-size 4096 -ngl 0 -t 4 > server.log 2>&1 &
-          for i in $(seq 1 60); do curl -sf http://localhost:8000/health && break || sleep 10; done
+          python3 -m llama_cpp.server --model $(echo weights/*.gguf) --host 127.0.0.1 --port 8000 --n_ctx 4096 --n_threads 4 > server.log 2>&1 &
+          for i in $(seq 1 60); do curl -sf http://localhost:8000/v1/models && break || sleep 10; done
       - name: task repo at base commit (public, no auth)
         run: |
           REPO=$(python3 -c "import json;print(json.load(open('/tmp/task.json'))['repo'])")
