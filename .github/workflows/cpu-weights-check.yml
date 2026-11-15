@@ -1,0 +1,36 @@
+name: cpu-weights-check (validate GGUF loads on CPU, no secrets)
+# Pre-flight for Kaggle kernels: proves a weights file LOADS (not just downloads)
+# before it ever burns a scarce Kaggle slot. Dispatch-only, never on push.
+on:
+  workflow_dispatch:
+    inputs:
+      repo:
+        description: "HF repo id"
+        default: "Qwen/Qwen2.5-3B-Instruct-GGUF"
+        required: true
+      file:
+        description: "GGUF filename"
+        default: "qwen2.5-3b-instruct-q4_k_m.gguf"
+        required: true
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: deps (pinned CPU wheel, no build)
+        run: |
+          pip install -q "llama-cpp-python==0.2.62" --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
+          pip install -q "huggingface_hub[cli]"
+          python3 -c "import llama_cpp; print('llama_cpp', llama_cpp.__version__)"
+      - name: download + full load + generate
+        run: |
+          hf download "${{ inputs.repo }}" "${{ inputs.file }}" --local-dir weights/
+          ls -la weights/
+          python3 - <<'PYEOF'
+          from llama_cpp import Llama
+          import glob
+          gg = glob.glob('weights/*.gguf'); assert len(gg) == 1, gg
+          m = Llama(model_path=gg[0], n_ctx=512, n_threads=4, verbose=False)
+          out = m('Hello', max_tokens=5)
+          print('LOAD-OK generate:', out['choices'][0]['text'][:80].replace('\n', ' '))
+          PYEOF
