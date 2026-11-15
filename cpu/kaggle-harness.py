@@ -109,7 +109,7 @@ def run_agent(ws, task_id, problem, prompt, max_calls, arm, sc, outdir, wall_s=1
         try: text = chat(messages)
         except Exception as e:
             log({'turn': calls, 'error': str(e)[:300]}); break
-        m = re.search(r'ACTION:\s*([A-Z]+)\s*([\s\S]*)', text)
+        m = re.search(r'ACTION:\s*([A-Z]+)\s*([^\n]*)', text)
         if not m:
             calls += 1
             result = 'ERR: no ACTION line; reply with ACTION: <tool> <args>'
