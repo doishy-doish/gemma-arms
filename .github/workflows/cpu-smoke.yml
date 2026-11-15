@@ -1,0 +1,82 @@
+name: cpu-smoke (0.5B CPU brutal filter, no secrets)
+# Mechanics-first: proves the CPU path end-to-end on runner minutes.
+# Verdict ladder L0 (path works) -> L3 (hidden test flips). No SFT, no training, inference-only.
+on:
+  workflow_dispatch:
+    inputs:
+      task:
+        description: "task id (must exist in cpu/tasks-all.jsonl)"
+        default: "rich_2943"
+        required: true
+      arm:
+        description: "nosidecar | sidecar"
+        default: "nosidecar"
+        required: true
+  push:
+    paths: ["cpu/**"]
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - name: pick task
+        run: |
+          TASK_IN="${{ inputs.task }}"; test -n "$TASK_IN" || TASK_IN="rich_2943"
+          ARM_IN="${{ inputs.arm }}"; test -n "$ARM_IN" || ARM_IN="nosidecar"
+          echo "task=$TASK_IN arm=$ARM_IN"
+          grep -c . cpu/tasks-all.jsonl
+          grep "\"id\":\"$TASK_IN\"" cpu/tasks-all.jsonl | head -1 > /tmp/task.json
+          test -s /tmp/task.json || { echo "unknown task"; exit 1; }
+          python3 -c "import json;t=json.load(open('/tmp/task.json'));print(t['id'],t['repo'],t['base_commit'][:8],t['test_files'])"
+          python3 -c "import json;t=json.load(open('/tmp/task.json'));json.dump({'id':t['id'],'repo':t['repo'],'problem_statement':t['problem_statement']},open('/tmp/task-agent.json','w'))"
+      - name: llama.cpp (pinned at run, not rolling)
+        run: |
+          TAG=$(curl -sf https://api.github.com/repos/ggerganov/llama.cpp/releases/latest | python3 -c "import json,sys;print(json.load(sys.stdin)['tag_name'])")
+          echo "llama tag: $TAG"
+          curl -sL -o llama.zip "https://github.com/ggerganov/llama.cpp/releases/download/${TAG}/llama-${TAG}-bin-ubuntu-x64.zip"
+          unzip -o -q llama.zip -d llama
+          ls llama/build/bin/llama-server
+      - name: small weights (first success wins, ~400MB)
+        run: |
+          pip install -q "huggingface_hub[cli]"
+          (hf download bartowski/Qwen2.5-0.5B-Instruct-GGUF Qwen2.5-0.5B-Instruct-Q4_K_M.gguf --local-dir weights/ 2>&1 | tail -1) || \
+          hf download Qwen/Qwen2.5-0.5B-Instruct-GGUF qwen2.5-0.5b-instruct-q4_k_m.gguf --local-dir weights/ 2>&1 | tail -1
+          ls -la weights/
+      - name: serve on :8000 (CPU, ctx 4096)
+        run: |
+          ./llama/build/bin/llama-server -m weights/*.gguf --port 8000 --ctx-size 4096 -ngl 0 -t 4 > server.log 2>&1 &
+          for i in $(seq 1 60); do curl -sf http://localhost:8000/health && break || sleep 10; done
+      - name: task repo at base commit (public, no auth)
+        run: |
+          REPO=$(python3 -c "import json;print(json.load(open('/tmp/task.json'))['repo'])")
+          BASE=$(python3 -c "import json;print(json.load(open('/tmp/task.json'))['base_commit'])")
+          git clone --quiet "https://github.com/${REPO}.git" /tmp/ws
+          git -C /tmp/ws checkout --quiet "$BASE"
+          git -C /tmp/ws log --oneline -1
+      - name: sidecar index (sidecar arm only)
+        if: inputs.arm == 'sidecar'
+        run: |
+          python3 cpu/sidecar.py --ws /tmp/ws --out sidecar/index.json
+      - name: agent (10 calls, 20-min wall)
+        run: |
+          node --version
+          ARM_IN="${{ inputs.arm }}"; test -n "$ARM_IN" || ARM_IN="nosidecar"
+          PROMPT=cpu/prompt-mini.md; SC=""; ARMNAME="nosidecar-10"
+          if [ "$ARM_IN" = "sidecar" ]; then PROMPT=cpu/prompt-sidecar.md; SC="--sidecar-index sidecar/index.json"; ARMNAME="sidecar-10"; fi
+          cp "$PROMPT" /tmp/prompt.md
+          node cpu/smoke-agent.mjs --ws /tmp/ws --task /tmp/task-agent.json --prompt /tmp/prompt.md --url http://localhost:8000/v1/chat/completions --max-calls 10 --arm "$ARMNAME" $SC --out results/
+      - name: grade (L0..L3 ladder)
+        run: |
+          pip install -q pytest
+          (cd /tmp/ws && pip install -q -e . 2>&1 | tail -1) || true
+          WS=/tmp/ws RES=results TASK_JSON=/tmp/task.json bash cpu/grade.sh 2>&1 | tee results/grade.log
+      - name: upload
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cpu-smoke-${{ inputs.task }}-${{ inputs.arm }}-${{ github.run_id }}
+          path: |
+            results/
+            server.log
+            sidecar/
