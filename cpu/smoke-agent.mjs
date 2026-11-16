@@ -221,8 +221,21 @@ async function chat(messages, tries = 5) {
 }
 
 const KL = keyLines(TASK.problem_statement);
+// batch-9 amend-3 priming (P16/P17): blank page + example block = copy-loop.
+// Harness executes ONE real grounding observation pre-T1 (zero model calls);
+// the model replies to real repo content, not to the examples.
+function topSymbol(problem) {
+  const kw = new Set(["import", "from", "def", "class", "return", "raise", "assert", "for", "while", "with", "none", "true", "false", "null", "self", "issue", "error", "expected", "actual", "should", "when", "that", "this", "test", "tests"]);
+  const toks = String(problem || "").split(/[^A-Za-z0-9_]+/).filter(t => t.length >= 4 && !kw.has(t.toLowerCase()));
+  return toks.find(t => /_/.test(t) || /[a-z][A-Z]/.test(t)) || toks[0] || "";
+}
+const PRIME_SYM = topSymbol(TASK.problem_statement);
+let PRIME_RES = "";
+try { PRIME_RES = tool(SCIDX ? "SIDECAR" : "GREP", PRIME_SYM || "def").slice(0, 1500); }
+catch (e) { PRIME_RES = "ERR: " + String(e).slice(0, 120); }
 const problem = "ISSUE (" + TASK.id + " in " + TASK.repo + "):\n" + TASK.problem_statement +
-  (KL.length ? "\nKEY LINES (shaped spec — GREP these symbols):\n" + KL.join("\n") : "");
+  (KL.length ? "\nKEY LINES (shaped spec — GREP these symbols):\n" + KL.join("\n") : "") +
+  "\nPRIMED OBSERVATION (real repo content — act on this, not the examples):\n" + (PRIME_RES || "(no hits — LS the tree)");
 const system = PROMPT + "\nROUTER: " + ROUTE + ".\n\nRepo tree (top 2 levels):\n" + TREE.join("\n");
 const t0 = Date.now();
 let messages = [{ role: "system", content: system }, { role: "user", content: problem }];
@@ -230,7 +243,7 @@ let calls = 0, done = null;
 let lastSig = "", seenSigs = new Set(), streak = 0, aborted = false;
 let greenAt = 0, greenCheckedPatch = -1;
 let criticRejects = 0, maskedErrs = 0, skippedBurst = 0, sigRepeats = 0;
-log({ system: system.slice(0, 500), problem: problem.slice(0, 500), route: ROUTE });
+log({ system: system.slice(0, 500), problem: problem.slice(0, 500), route: ROUTE, primed: PRIME_SYM });
 while (calls < MAX_CALLS && Date.now() - t0 < 20 * 60 * 1000) {
   const { text, ms } = await chat(messages);
   // multi-action parse (F20): scan ALL action lines; skip example-copies, repeats, non-tree paths
@@ -310,5 +323,5 @@ while (calls < MAX_CALLS && Date.now() - t0 < 20 * 60 * 1000) {
 }
 let diff = gitDiff();
 fs.writeFileSync(path.join(OUT, "agent.patch"), diff.startsWith("ERR") ? "" : diff);
-fs.writeFileSync(path.join(OUT, "metrics.json"), JSON.stringify({ task: TASK.id, arm: ARM, calls, done, wall_s: Math.round((Date.now() - t0) / 1000), patch_chars: (diff.startsWith("ERR") ? 0 : diff.length), abort: aborted, green_at: greenAt, critic_rejects: criticRejects, masked_errs: maskedErrs, skipped_burst: skippedBurst, sig_repeats: sigRepeats, route: ROUTE }, null, 1));
+fs.writeFileSync(path.join(OUT, "metrics.json"), JSON.stringify({ task: TASK.id, arm: ARM, calls, done, wall_s: Math.round((Date.now() - t0) / 1000), patch_chars: (diff.startsWith("ERR") ? 0 : diff.length), abort: aborted, green_at: greenAt, critic_rejects: criticRejects, masked_errs: maskedErrs, skipped_burst: skippedBurst, sig_repeats: sigRepeats, route: ROUTE, primed: PRIME_SYM }, null, 1));
 console.log("calls=" + calls + " patch_chars=" + (diff.startsWith("ERR") ? 0 : diff.length) + " done=" + (done || (aborted ? "ABORTED" : "no-DONE")));

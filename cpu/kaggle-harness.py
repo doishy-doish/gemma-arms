@@ -197,6 +197,10 @@ def mid_green(ws, test_files):
         if re.search(r'failed|error', tail, re.I): return 'red'
         return 'green' if 'passed' in tail else 'unknown'
     except Exception: return 'unknown'
+def top_symbol(problem):
+    kw = set(['import', 'from', 'def', 'class', 'return', 'raise', 'assert', 'for', 'while', 'with', 'none', 'true', 'false', 'null', 'self', 'issue', 'error', 'expected', 'actual', 'should', 'when', 'that', 'this', 'test', 'tests'])
+    toks = [t for t in re.split(r'[^A-Za-z0-9_]+', str(problem or '')) if len(t) >= 4 and t.lower() not in kw]
+    return next((t for t in toks if '_' in t or re.search('[a-z][A-Z]', t)), toks[0] if toks else '')
 def run_agent(ws, task_id, problem, prompt, max_calls, arm, sc, outdir, wall_s=1200, test_files=None):
     os.makedirs(outdir, exist_ok=True)
     def log(o):
@@ -208,7 +212,11 @@ def run_agent(ws, task_id, problem, prompt, max_calls, arm, sc, outdir, wall_s=1
     kl = key_lines(problem)
     if kl: problem = problem + '\nKEY LINES (shaped spec \u2014 GREP these symbols):\n' + '\n'.join(kl)
     system = prompt + '\nROUTER: ' + route + '.\n\nRepo tree (top 2 levels):\n' + treetxt
-    log({'system': system[:500], 'problem': problem[:500], 'route': route})
+    prime_sym = top_symbol(problem)
+    try: prime_res = tool('SIDECAR' if sc is not None else 'GREP', prime_sym or 'def', ws, sc)[:1500]
+    except Exception as ex: prime_res = 'ERR: ' + str(ex)[:120]
+    problem = problem + chr(10) + 'PRIMED OBSERVATION (real repo content -- act on this, not the examples):' + chr(10) + (prime_res or '(no hits -- LS the tree)')
+    log({'system': system[:500], 'problem': problem[:500], 'route': route, 'primed': prime_sym})
     messages = [{'role': 'system', 'content': system}, {'role': 'user', 'content': problem}]
     calls, done, t0 = 0, None, time.time()
     lastSig, seenSigs, streak, aborted = '', set(), 0, False
@@ -301,6 +309,6 @@ def run_agent(ws, task_id, problem, prompt, max_calls, arm, sc, outdir, wall_s=1
     diff = git_diff(ws)
     if diff.startswith('ERR'): diff = ''
     open(os.path.join(outdir, 'agent.patch'), 'w').write(diff)
-    open(os.path.join(outdir, 'metrics.json'), 'w').write(json.dumps({'task': task_id, 'arm': arm, 'calls': calls, 'done': done, 'wall_s': round(time.time()-t0), 'patch_chars': len(diff), 'abort': aborted, 'green_at': greenAt, 'critic_rejects': criticRejects, 'masked_errs': maskedErrs, 'skipped_burst': skippedBurst, 'sig_repeats': sigRepeats, 'route': route}))
+    open(os.path.join(outdir, 'metrics.json'), 'w').write(json.dumps({'task': task_id, 'arm': arm, 'calls': calls, 'done': done, 'wall_s': round(time.time()-t0), 'patch_chars': len(diff), 'abort': aborted, 'green_at': greenAt, 'critic_rejects': criticRejects, 'masked_errs': maskedErrs, 'skipped_burst': skippedBurst, 'sig_repeats': sigRepeats, 'route': route, 'primed': prime_sym}))
     return calls, done, diff
 print('harness loaded')
