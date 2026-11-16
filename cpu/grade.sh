@@ -15,6 +15,7 @@ echo "== base tests =="
 for _t in $TPY; do (cd "$WS" && python -m pytest "$_t" -q -W "ignore::DeprecationWarning" 2>&1 | tail -2); done | tee "$RES/pytest-base.log"
 echo "== apply agent patch =="
 (cd "$WS" && git apply --check "$OLDPWD/$RES/agent.patch" 2>&1 && git apply "$OLDPWD/$RES/agent.patch" && echo APPLIED || echo "NOT-APPLIED-or-empty") | tee "$RES/apply-agent.txt"
+git -C "$WS" status --porcelain=v1 | awk '{print $2}' > "$RES/agent-files.txt" || true
 echo "== apply hidden test patch (grade phase only) =="
 python - "$TASK_JSON" "$WS" <<'EOF'
 import json,sys
@@ -70,6 +71,9 @@ res = sys.argv[1]
 s = json.load(open(os.path.join(res, 'ladder-suites.json')))
 aa = open(os.path.join(res, 'apply-agent.txt')).read()
 at = open(os.path.join(res, 'apply-test.txt')).read()
+af = open(os.path.join(res, 'agent-files.txt')).read().split() if os.path.exists(os.path.join(res, 'agent-files.txt')) else []
+import re as _re
+pol = [f for f in af if _re.search(r'(^|/)tests?/', f) or _re.search(r'(^|/)(test_.*|conftest\.py)$', f) or _re.search(r'\.(cfg|toml|ini|yaml|yml)$', f) or f == 'setup.py']
 tapply = 'APPLIED' in aa and 'NOT-APPLIED' not in aa
 papply = 'TESTPATCH-APPLIED' in at
 lad = {
@@ -77,6 +81,8 @@ lad = {
   'L1': tapply,
   'tapply': tapply,
   'papply': papply,
+  'polluted': bool(pol),
+  'polluted_files': pol[:10],
   'patched_collected': s['patched']['collected'],
   'patched_failed': s['patched']['failed'],
   'patched_errors': s['patched']['errors'],
@@ -86,8 +92,8 @@ lad = {
   'n_flip': s['n_flip'],
   'flip': s['flip'],
 }
-lad['L2'] = bool(tapply and lad['patched_collected'] > 0 and lad['patched_failed'] == 0 and lad['patched_errors'] == 0)
-lad['L3'] = bool(tapply and papply and lad['graded_collected'] > 0 and lad['graded_failed'] == 0 and lad['graded_errors'] == 0 and lad['n_flip'] > 0)
+lad['L2'] = bool(tapply and not pol and lad['patched_collected'] > 0 and lad['patched_failed'] == 0 and lad['patched_errors'] == 0)
+lad['L3'] = bool(tapply and papply and not pol and lad['graded_collected'] > 0 and lad['graded_failed'] == 0 and lad['graded_errors'] == 0 and lad['n_flip'] > 0)
 json.dump(lad, open(os.path.join(res, 'ladder.json'), 'w'), indent=1)
-print('tapply=%s papply=%s L0=%s L1=%s L2=%s L3=%s flip=%d' % (tapply, papply, lad['L0'], lad['L1'], lad['L2'], lad['L3'], lad['n_flip']))
+print('tapply=%s papply=%s polluted=%s L0=%s L1=%s L2=%s L3=%s flip=%d' % (tapply, papply, bool(pol), lad['L0'], lad['L1'], lad['L2'], lad['L3'], lad['n_flip']))
 EOF
