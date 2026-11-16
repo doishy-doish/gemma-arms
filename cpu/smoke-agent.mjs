@@ -233,6 +233,31 @@ const PRIME_SYM = topSymbol(TASK.problem_statement);
 let PRIME_RES = "";
 try { PRIME_RES = tool(SCIDX ? "SIDECAR" : "GREP", PRIME_SYM || "def").slice(0, 1500); }
 catch (e) { PRIME_RES = "ERR: " + String(e).slice(0, 120); }
+// batch-10 grounding enforcement (sweep-4 Agentless flavor: localize-then-repair,
+// harness-enforced): EDIT/EDITLINE may only touch OBSERVED files (seen via READ/LS/
+// GREP/SIDECAR hits or priming). Unobserved target -> redirect ERR naming observed
+// files. Calls 1-3 are localize-only (edit window opens call 4, per E13 4-6).
+const observed = new Set();
+function noteObserved(name, rest, result) {
+  if (!result || result.startsWith("ERR") || result === "(no hits)" || result === "(no symbols match)") return;
+  if (name === "READ") { observed.add(pathArg(name, rest).toLowerCase()); }
+  else if (name === "LS") {
+    const d = (rest.trim() || ".").replace(/\/$/, "");
+    for (const l of String(result).split("\n").slice(0, 100)) {
+      const e = l.trim(); if (!e || e.endsWith("/")) continue;
+      observed.add((d === "." ? e : d + "/" + e).toLowerCase());
+    }
+  } else if (name === "GREP") {
+    for (const l of String(result).split("\n").slice(0, 30)) {
+      const p = l.split(":")[0]; if (p && p.includes(".")) observed.add(p.trim().toLowerCase());
+    }
+  } else if (name === "SIDECAR") {
+    for (const l of String(result).split("\n").slice(0, 20)) {
+      const p = l.split(":")[0]; if (p && p.includes("/")) observed.add(p.trim().toLowerCase());
+    }
+  }
+}
+noteObserved(SCIDX ? "SIDECAR" : "GREP", PRIME_SYM || "def", PRIME_RES);
 const problem = "ISSUE (" + TASK.id + " in " + TASK.repo + "):\n" + TASK.problem_statement +
   (KL.length ? "\nKEY LINES (shaped spec — GREP these symbols):\n" + KL.join("\n") : "") +
   "\nPRIMED OBSERVATION (real repo content — act on this, not the examples):\n" + (PRIME_RES || "(no hits — LS the tree)");
@@ -242,7 +267,7 @@ let messages = [{ role: "system", content: system }, { role: "user", content: pr
 let calls = 0, done = null;
 let lastSig = "", seenSigs = new Set(), streak = 0, aborted = false;
 let greenAt = 0, greenCheckedPatch = -1;
-let criticRejects = 0, maskedErrs = 0, skippedBurst = 0, sigRepeats = 0;
+let criticRejects = 0, maskedErrs = 0, skippedBurst = 0, sigRepeats = 0, gatedRejects = 0;
 log({ system: system.slice(0, 500), problem: problem.slice(0, 500), route: ROUTE, primed: PRIME_SYM });
 while (calls < MAX_CALLS && Date.now() - t0 < 20 * 60 * 1000) {
   const { text, ms } = await chat(messages);
@@ -278,12 +303,20 @@ while (calls < MAX_CALLS && Date.now() - t0 < 20 * 60 * 1000) {
     } else if (sig === lastSig) {
       sigRepeats++;
       result = "ERR: repeated action shape — same " + name + " shape twice in a row is banned, switch tools (READ once, then GREP or EDIT).";
+    } else if ((name === "EDIT" || name === "EDITLINE") && calls <= 3) {
+      gatedRejects++;
+      result = "ERR: localize first — calls 1-3 are LS/GREP/SIDECAR/READ only (edit window opens call 4). Ground the bug location first.";
+    } else if ((name === "EDIT" || name === "EDITLINE") && !observed.has(pathArg(name, rest).toLowerCase())) {
+      gatedRejects++;
+      const seen = [...observed].slice(0, 5);
+      result = "ERR: grounding gate — " + (pathArg(name, rest) || "(no path)") + " is not a file you have looked at. " + (seen.length ? "You HAVE seen: " + seen.join(", ") + ". READ one first (READ <file> 1 40), then EDIT it." : "LS the tree or GREP a symbol first.") + " Example paths (acme/...) are never real.";
     } else {
       lastSig = sig;
       if (EDIT_CLASS.has(name)) { try { result = tool(name, rest); } catch (e) { result = "ERR: " + String(e).slice(0, 300); } lastSig = ""; progress = true; }
       else if (GROUND_CLASS.has(name)) { try { result = tool(name, rest); } catch (e) { result = "ERR: " + String(e).slice(0, 300); } if (!seenSigs.has(sig)) { seenSigs.add(sig); progress = true; } }
       else { try { result = tool(name, rest); } catch (e) { result = "ERR: " + String(e).slice(0, 300); } }
       acted = name;
+      noteObserved(name, rest, result);
       log({ turn: calls, raw: text.slice(0, 2000), action: name, sig: sig.slice(0, 80), progress, streak, skipped });
     }
     // no-progress abort k=3 (F21/D17): deterministic, executor untouched otherwise
@@ -323,5 +356,5 @@ while (calls < MAX_CALLS && Date.now() - t0 < 20 * 60 * 1000) {
 }
 let diff = gitDiff();
 fs.writeFileSync(path.join(OUT, "agent.patch"), diff.startsWith("ERR") ? "" : diff);
-fs.writeFileSync(path.join(OUT, "metrics.json"), JSON.stringify({ task: TASK.id, arm: ARM, calls, done, wall_s: Math.round((Date.now() - t0) / 1000), patch_chars: (diff.startsWith("ERR") ? 0 : diff.length), abort: aborted, green_at: greenAt, critic_rejects: criticRejects, masked_errs: maskedErrs, skipped_burst: skippedBurst, sig_repeats: sigRepeats, route: ROUTE, primed: PRIME_SYM }, null, 1));
+fs.writeFileSync(path.join(OUT, "metrics.json"), JSON.stringify({ task: TASK.id, arm: ARM, calls, done, wall_s: Math.round((Date.now() - t0) / 1000), patch_chars: (diff.startsWith("ERR") ? 0 : diff.length), abort: aborted, green_at: greenAt, critic_rejects: criticRejects, masked_errs: maskedErrs, skipped_burst: skippedBurst, sig_repeats: sigRepeats, gated_rejects: gatedRejects, route: ROUTE, primed: PRIME_SYM, observed_n: observed.size }, null, 1));
 console.log("calls=" + calls + " patch_chars=" + (diff.startsWith("ERR") ? 0 : diff.length) + " done=" + (done || (aborted ? "ABORTED" : "no-DONE")));

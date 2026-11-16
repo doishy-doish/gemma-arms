@@ -216,12 +216,31 @@ def run_agent(ws, task_id, problem, prompt, max_calls, arm, sc, outdir, wall_s=1
     try: prime_res = tool('SIDECAR' if sc is not None else 'GREP', prime_sym or 'def', ws, sc)[:1500]
     except Exception as ex: prime_res = 'ERR: ' + str(ex)[:120]
     problem = problem + chr(10) + 'PRIMED OBSERVATION (real repo content -- act on this, not the examples):' + chr(10) + (prime_res or '(no hits -- LS the tree)')
+    observed = set()
+    def note_observed(name, rest, result):
+        if not result or result.startswith('ERR') or result in ('(no hits)', '(no symbols match)'): return
+        if name == 'READ': observed.add(path_arg(name, rest).lower())
+        elif name == 'LS':
+            d = (rest.strip() or '.').rstrip('/')
+            for l in str(result).split(chr(10))[:100]:
+                e = l.strip()
+                if not e or e.endswith('/'): continue
+                observed.add((e if d == '.' else d + '/' + e).lower())
+        elif name == 'GREP':
+            for l in str(result).split(chr(10))[:30]:
+                p = l.split(':')[0]
+                if p and '.' in p: observed.add(p.strip().lower())
+        elif name == 'SIDECAR':
+            for l in str(result).split(chr(10))[:20]:
+                p = l.split(':')[0]
+                if p and '/' in p: observed.add(p.strip().lower())
+    note_observed('SIDECAR' if sc is not None else 'GREP', prime_sym or 'def', prime_res)
     log({'system': system[:500], 'problem': problem[:500], 'route': route, 'primed': prime_sym})
     messages = [{'role': 'system', 'content': system}, {'role': 'user', 'content': problem}]
     calls, done, t0 = 0, None, time.time()
     lastSig, seenSigs, streak, aborted = '', set(), 0, False
     greenAt, greenCheckedPatch = 0, -1
-    criticRejects, maskedErrs, skippedBurst, sigRepeats = 0, 0, 0, 0
+    criticRejects, maskedErrs, skippedBurst, sigRepeats, gatedRejects = 0, 0, 0, 0, 0
     while calls < max_calls and time.time() - t0 < wall_s:
         try: text = chat(messages)
         except Exception as e:
@@ -264,6 +283,13 @@ def run_agent(ws, task_id, problem, prompt, max_calls, arm, sc, outdir, wall_s=1
                 if s == lastSig:
                     sigRepeats += 1
                     result = 'ERR: repeated action shape \u2014 same ' + name.strip() + ' shape twice in a row is banned, switch tools (READ once, then GREP or EDIT).'
+                elif name.strip() in ('EDIT', 'EDITLINE') and calls <= 3:
+                    gatedRejects += 1
+                    result = 'ERR: localize first -- calls 1-3 are LS/GREP/SIDECAR/READ only (edit window opens call 4). Ground the bug location first.'
+                elif name.strip() in ('EDIT', 'EDITLINE') and path_arg(name.strip(), rest).lower() not in observed:
+                    gatedRejects += 1
+                    seen = sorted(observed)[:5]
+                    result = 'ERR: grounding gate -- ' + (path_arg(name.strip(), rest) or '(no path)') + ' is not a file you have looked at. ' + ('You HAVE seen: ' + ', '.join(seen) + '. READ one first, then EDIT it.' if seen else 'LS the tree or GREP a symbol first.') + ' Example paths (acme/...) are never real.'
                 else:
                     lastSig = s
                     if name.strip() in EDIT_CLASS:
@@ -278,6 +304,7 @@ def run_agent(ws, task_id, problem, prompt, max_calls, arm, sc, outdir, wall_s=1
                         try: result = tool(name.strip(), rest, ws, sc)
                         except Exception as e: result = 'ERR: ' + str(e)[:300]
                     acted = name.strip()
+                    note_observed(name.strip(), rest, result)
                     log({'turn': calls, 'raw': text[:2000], 'action': name.strip(), 'sig': s[:80], 'progress': progress, 'streak': streak, 'skipped': skipped})
                 if not progress: streak += 1
                 else: streak = 0
@@ -309,6 +336,6 @@ def run_agent(ws, task_id, problem, prompt, max_calls, arm, sc, outdir, wall_s=1
     diff = git_diff(ws)
     if diff.startswith('ERR'): diff = ''
     open(os.path.join(outdir, 'agent.patch'), 'w').write(diff)
-    open(os.path.join(outdir, 'metrics.json'), 'w').write(json.dumps({'task': task_id, 'arm': arm, 'calls': calls, 'done': done, 'wall_s': round(time.time()-t0), 'patch_chars': len(diff), 'abort': aborted, 'green_at': greenAt, 'critic_rejects': criticRejects, 'masked_errs': maskedErrs, 'skipped_burst': skippedBurst, 'sig_repeats': sigRepeats, 'route': route, 'primed': prime_sym}))
+    open(os.path.join(outdir, 'metrics.json'), 'w').write(json.dumps({'task': task_id, 'arm': arm, 'calls': calls, 'done': done, 'wall_s': round(time.time()-t0), 'patch_chars': len(diff), 'abort': aborted, 'green_at': greenAt, 'critic_rejects': criticRejects, 'masked_errs': maskedErrs, 'skipped_burst': skippedBurst, 'sig_repeats': sigRepeats, 'gated_rejects': gatedRejects, 'route': route, 'primed': prime_sym, 'observed_n': len(observed)}))
     return calls, done, diff
 print('harness loaded')
