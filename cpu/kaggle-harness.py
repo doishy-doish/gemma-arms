@@ -131,70 +131,176 @@ def tool(name, rest, ws, sc):
         f = os.path.join(ws, p)
         if os.path.exists(f): return 'ERR: WRITE is new-files-only'
         open(f, 'w', encoding='utf-8').write(body)
+        try: subprocess.run(['git', '-C', ws, 'add', '-N', p.strip()], capture_output=True, timeout=60)
+        except Exception: pass
         return 'OK wrote ' + p
     return 'ERR: unknown tool ' + name
-def run_agent(ws, task_id, problem, prompt, max_calls, arm, sc, outdir, wall_s=1200):
+# ---- batch-9 deterministic machinery (mirrors smoke-agent.mjs) ----
+def sig_of(name, rest):
+    norm = lambda s: re.sub(r'[^a-z0-9_]+', '', (s or '').lower())
+    if name == 'READ': return 'READ ' + (rest.split()[0] if rest.split() else '').lower()
+    if name == 'LS': return 'LS ' + (rest.strip() or '.').lower()
+    if name in ('GREP', 'SIDECAR'): return name + ' ' + norm(rest)
+    if name == 'EDIT':
+        ps = rest.split(' ||| ')
+        return 'EDIT ' + (ps[0] if ps else '').strip().lower() + ' :: ' + norm(ps[1] if len(ps) > 1 else '')
+    if name == 'EDITLINE':
+        ps = rest.split(' ||| ')
+        return 'EDITLINE ' + (ps[0] if ps else '').strip().lower() + ' :: ' + (ps[1] if len(ps) > 1 else '').strip()
+    if name == 'WRITE': return 'WRITE ' + (rest.split()[0] if rest.split() else '').lower()
+    return name + ' ' + rest.strip()
+EDIT_CLASS = ('EDIT', 'EDITLINE', 'WRITE')
+GROUND_CLASS = ('LS', 'SIDECAR', 'GREP', 'READ')
+def path_arg(name, rest):
+    if name in ('READ', 'LS', 'WRITE'): return (rest.split()[0] if rest.split() else '').strip()
+    if name in ('EDIT', 'EDITLINE'): return (rest.split(' ||| ')[0] if rest else '').strip()
+    return ''
+def git_diff(ws):
+    try:
+        return subprocess.run(['git', '-C', ws, 'diff', '--', '.:!*.orig'], capture_output=True, text=True, timeout=60).stdout
+    except Exception: return 'ERR'
+def diff_files(ws):
+    try:
+        s = subprocess.run(['git', '-C', ws, 'diff', '--name-status', '--', '.:!*.orig'], capture_output=True, text=True, timeout=60).stdout
+        out = []
+        for l in s.split('\n'):
+            if not l.strip(): continue
+            st, _, p = l.partition('\t')
+            out.append({'st': st.strip(), 'p': p})
+        return out
+    except Exception: return []
+def critic(ws, summary):
+    d = git_diff(ws)
+    if not d.strip() or d.startswith('ERR'): return 'ERR: DONE rejected. Working tree has no patch (0 chars). Make at least one EDIT that changes repo source, then DONE.'
+    files = diff_files(ws)
+    bad = [f['p'] for f in files if re.search(r'(^|/)tests?/', f['p']) or re.search(r'(^|/)(test_.*|conftest\.py)$', f['p']) or re.search(r'\.(cfg|toml|ini|yaml|yml)$', f['p']) or f['p'] == 'setup.py']
+    if bad: return 'ERR: DONE rejected. Patch touches test/config paths (%s). EDIT repo source only, then DONE.' % ', '.join(bad)
+    if files and all(f['st'] == 'A' for f in files): return 'ERR: DONE rejected. Patch adds files but modifies no existing source. EDIT the buggy file, then DONE.'
+    names = [f['p'].split('/')[-1].lower() for f in files if f['p']]
+    if not any(n and n in (summary or '').lower() for n in names):
+        return 'ERR: DONE rejected. Summary must name a file your patch touches (%s). Re-read your diff, then DONE.' % ', '.join(names[:5])
+    return None
+def key_lines(problem):
+    out = []
+    for l in str(problem or '').split('\n'):
+        if len(out) >= 12: break
+        t = l.strip()
+        if len(t) < 4 or len(t) > 220: continue
+        if re.search(r'error|assert|expected|raise|traceback|denied|fail|def |class |return|import ', t, re.I): out.append(t[:160])
+    return out
+def mid_green(ws, test_files):
+    if not test_files: return 'unknown'
+    try:
+        p = subprocess.run(['python', '-m', 'pytest'] + list(test_files) + ['-q', '--tb=no', '-W', 'ignore::DeprecationWarning'],
+            cwd=ws, capture_output=True, text=True, timeout=240)
+        tail = ' '.join(((p.stdout or '') + '\n' + (p.stderr or '')).split('\n')[-3:])
+        if re.search(r'failed|error', tail, re.I): return 'red'
+        return 'green' if 'passed' in tail else 'unknown'
+    except Exception: return 'unknown'
+def run_agent(ws, task_id, problem, prompt, max_calls, arm, sc, outdir, wall_s=1200, test_files=None):
     os.makedirs(outdir, exist_ok=True)
     def log(o):
         open(os.path.join(outdir, 'transcript.jsonl'), 'a').write(json.dumps(o) + '\n')
-    system = prompt + '\n\nRepo tree (top 2 levels):\n' + tree(ws)
-    log({'system': system[:500], 'problem': problem[:500]})
+    examples = set(l.strip() for l in prompt.split('\n') if re.match(r'^ACTION:\s*\w+', l.strip(), re.I))
+    treetxt = tree(ws)
+    top = set(p.split('/')[0].lower() for p in treetxt.split('\n') if p)
+    route = 'small-repo: open with GREP or SIDECAR on issue symbols, LS only if lost' if len(treetxt.split('\n')) < 60 else 'standard: open with LS or GREP, then READ +-40 around hits'
+    kl = key_lines(problem)
+    if kl: problem = problem + '\nKEY LINES (shaped spec \u2014 GREP these symbols):\n' + '\n'.join(kl)
+    system = prompt + '\nROUTER: ' + route + '.\n\nRepo tree (top 2 levels):\n' + treetxt
+    log({'system': system[:500], 'problem': problem[:500], 'route': route})
     messages = [{'role': 'system', 'content': system}, {'role': 'user', 'content': problem}]
-    calls, done, t0, lastKey, navigated = 0, None, time.time(), '', False
+    calls, done, t0 = 0, None, time.time()
+    lastSig, seenSigs, streak, aborted = '', set(), 0, False
+    greenAt, greenCheckedPatch = 0, -1
+    criticRejects, maskedErrs, skippedBurst, sigRepeats = 0, 0, 0, 0
     while calls < max_calls and time.time() - t0 < wall_s:
         try: text = chat(messages)
         except Exception as e:
             log({'turn': calls, 'error': str(e)[:300]}); break
-        m = re.search(r'^\\s*action:\\s*([A-Za-z]+)\\s*([^\\n]*)', text, re.I | re.M)
-        if not m:
+        acts = [{'name': m.group(1).upper().strip(), 'rest': (m.group(2) or '').strip(), 'line': m.group(0).strip()}
+                for m in re.finditer(r'^\s*action:\s*([A-Za-z]+)\s*([^\n]*)', text, re.I | re.M)]
+        if not acts:
             calls += 1
+            streak += 1
             result = 'ERR: no ACTION line; reply with ACTION: <tool> <args>'
             echo = 'ACTION: (none parsed)'
-            log({'turn': calls, 'raw': text[:2000], 'action': None})
+            log({'turn': calls, 'raw': text[:2000], 'action': None, 'progress': False, 'streak': streak})
+            if streak >= 3:
+                aborted = True
+                log({'turn': calls, 'result': result, 'abort': 'mute streak=3, run capped (F21)'})
+                break
         else:
-            name, rest = m.group(1).upper(), (m.group(2) or '').strip()
+            pick, skipped = None, []
+            for ac in acts:
+                s = sig_of(ac['name'], ac['rest'])
+                if ac['line'] in examples: skipped.append('example-copy:' + ac['line'][:60]); continue
+                if ac['name'] != 'DONE' and s == lastSig: skipped.append('repeat:' + s[:60]); continue
+                pa = path_arg(ac['name'], ac['rest'])
+                if pa and pa.split('/')[0].lower() not in top: skipped.append('non-tree:' + pa[:60]); continue
+                pick = ac; break
+            if pick is None: pick = acts[0]
+            skippedBurst += len(skipped)
+            name, rest = pick['name'], pick['rest']
             echo = 'ACTION: ' + name.strip() + ' ' + rest[:300]
+            progress, acted = False, None
             if name == 'DONE':
                 calls += 1
-                log({'turn': calls, 'raw': text[:2000], 'action': 'DONE'})
-                try:
-                    _now = subprocess.run(['git', '-C', ws, 'diff', '--', '.:!*.orig'], capture_output=True, text=True, timeout=60).stdout
-                except Exception:
-                    _now = ''
-                if not _now.strip():
-                    result = 'ERR: DONE rejected. Working tree has no patch (0 chars). Make at least one EDIT that changes repo source, then DONE.'
-                else:
-                    done = rest[:300]; break
-            calls += 1
-            akey = name.strip() + ' ' + rest
-            if name == 'DONE':
-                pass  # batch 6: rejected above; result already carries the guidance
-            elif not navigated and name.strip() not in ('LS', 'SIDECAR', 'GREP'):
-                result = 'ERR: first action must navigate (LS, SIDECAR, or GREP) — example paths are placeholders, never use them blind'
+                log({'turn': calls, 'raw': text[:2000], 'action': 'DONE', 'skipped': skipped})
+                rej = critic(ws, rest)
+                if rej: result = rej; criticRejects += 1
+                else: done = rest[:300]; log({'turn': calls, 'result': 'DONE accepted'}); break
             else:
-                if name.strip() in ('LS', 'SIDECAR', 'GREP'): navigated = True
-                if akey == lastKey:
-                    result = 'ERR: repeated action — same ACTION+args twice in a row is banned, switch tools (READ->GREP->EDIT, never re-read the same range)'
+                calls += 1
+                s = sig_of(name.strip(), rest)
+                if s == lastSig:
+                    sigRepeats += 1
+                    result = 'ERR: repeated action shape \u2014 same ' + name.strip() + ' shape twice in a row is banned, switch tools (READ once, then GREP or EDIT).'
                 else:
-                    lastKey = akey
-                    try: result = tool(name.strip(), rest, ws, sc)
-                    except Exception as e: result = 'ERR: ' + str(e)[:300]
-            log({'turn': calls, 'raw': text[:2000], 'action': name.strip()})
-        log({'turn': calls, 'result': str(result)[:2000]})
-        # batch 4: never re-feed the full model echo (runaway text killed GH pilots
-        # at 4944>4096). ACTION line only + sliding window under ~20k chars.
-        messages.append({'role': 'assistant', 'content': echo})
+                    lastSig = s
+                    if name.strip() in EDIT_CLASS:
+                        try: result = tool(name.strip(), rest, ws, sc)
+                        except Exception as e: result = 'ERR: ' + str(e)[:300]
+                        lastSig = ''; progress = True
+                    elif name.strip() in GROUND_CLASS:
+                        try: result = tool(name.strip(), rest, ws, sc)
+                        except Exception as e: result = 'ERR: ' + str(e)[:300]
+                        if s not in seenSigs: seenSigs.add(s); progress = True
+                    else:
+                        try: result = tool(name.strip(), rest, ws, sc)
+                        except Exception as e: result = 'ERR: ' + str(e)[:300]
+                    acted = name.strip()
+                    log({'turn': calls, 'raw': text[:2000], 'action': name.strip(), 'sig': s[:80], 'progress': progress, 'streak': streak, 'skipped': skipped})
+                if not progress: streak += 1
+                else: streak = 0
+                if streak >= 3 and not done:
+                    aborted = True
+                    log({'turn': calls, 'result': str(result)[:2000], 'abort': 'no-progress streak=3, run capped (F21)'})
+                    break
+            log({'turn': calls, 'action': name.strip() if acts else None})
+        isErr = str(result).startswith('ERR')
+        if isErr: maskedErrs += 1
+        messages.append({'role': 'assistant', 'content': 'ACTION failed (masked). Switch tools, never repeat.' if isErr else echo})
         messages.append({'role': 'user', 'content': 'TOOL RESULT:\n' + str(result)[:3000] + '\nReply with EXACTLY one ACTION line.'})
         chars = sum(len(mm.get('content', '')) for mm in messages)
         while len(messages) > 4 and chars > 20000:
             for dd in messages[2:4]: chars -= len(dd.get('content', ''))
             del messages[2:4]
-    diff = ''
-    try:
-        diff = subprocess.run(['git', '-C', ws, 'diff', '--', '.:!*.orig'], capture_output=True, text=True, timeout=60).stdout
-    except Exception as e:
-        diff = 'ERR git diff: ' + str(e)[:200]
+        if not greenAt and acted and acted in EDIT_CLASS and str(result).startswith('OK'):
+            now = git_diff(ws)
+            if now.strip() and not now.startswith('ERR') and len(now) != greenCheckedPatch:
+                greenCheckedPatch = len(now)
+                g = mid_green(ws, test_files)
+                log({'turn': calls, 'midcheck': g, 'patch_chars': len(now)})
+                if g == 'green': greenAt = calls
+        if greenAt and calls >= greenAt + 2 and not done:
+            files = [f['p'].split('/')[-1] for f in diff_files(ws)]
+            done = 'auto: post-green cap (+2), touches ' + ', '.join(files[:3])
+            log({'turn': calls, 'result': 'post-green cap fired, auto-DONE'})
+            break
+    diff = git_diff(ws)
+    if diff.startswith('ERR'): diff = ''
     open(os.path.join(outdir, 'agent.patch'), 'w').write(diff)
-    open(os.path.join(outdir, 'metrics.json'), 'w').write(json.dumps({'task': task_id, 'arm': arm, 'calls': calls, 'done': done, 'wall_s': round(time.time()-t0), 'patch_chars': len(diff)}))
+    open(os.path.join(outdir, 'metrics.json'), 'w').write(json.dumps({'task': task_id, 'arm': arm, 'calls': calls, 'done': done, 'wall_s': round(time.time()-t0), 'patch_chars': len(diff), 'abort': aborted, 'green_at': greenAt, 'critic_rejects': criticRejects, 'masked_errs': maskedErrs, 'skipped_burst': skippedBurst, 'sig_repeats': sigRepeats, 'route': route}))
     return calls, done, diff
 print('harness loaded')

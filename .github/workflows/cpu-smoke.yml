@@ -9,7 +9,7 @@ on:
         default: "rich_2943"
         required: true
       arm:
-        description: "nosidecar | sidecar"
+        description: "nosidecar | sidecar | inject"
         default: "nosidecar"
         required: true
   push:
@@ -30,6 +30,8 @@ jobs:
           test -s /tmp/task.json || { echo "unknown task"; exit 1; }
           python3 -c "import json;t=json.load(open('/tmp/task.json'));print(t['id'],t['repo'],t['base_commit'][:8],t['test_files'])"
           python3 -c "import json;t=json.load(open('/tmp/task.json'));json.dump({'id':t['id'],'repo':t['repo'],'problem_statement':t['problem_statement']},open('/tmp/task-agent.json','w'))"
+          python3 -c "import json;t=json.load(open('/tmp/task.json'));open('/tmp/issue.txt','w').write(t['problem_statement'])"
+          python3 -c "import json;t=json.load(open('/tmp/task.json'));print(' '.join(t.get('test_files') or []))" > /tmp/test-files.txt
       - name: model server wheel (pinned 0.2.62, CPU, no build)
         run: |
           python3 --version
@@ -51,20 +53,35 @@ jobs:
           REPO=$(python3 -c "import json;print(json.load(open('/tmp/task.json'))['repo'])")
           BASE=$(python3 -c "import json;print(json.load(open('/tmp/task.json'))['base_commit'])")
           git clone --quiet "https://github.com/${REPO}.git" /tmp/ws
-          git -C /tmp/ws checkout --quiet "$BASE"
+          git -C /tmp/ws checkout --force --quiet "$BASE"
+          git -C /tmp/ws clean -fdx -q || true
           git -C /tmp/ws log --oneline -1
-      - name: sidecar index (sidecar arm only)
-        if: inputs.arm == 'sidecar'
+      - name: "task deps (pre-install: mid-run grade checks need them)"
+        run: |
+          pip install -q pytest httpx
+          (cd /tmp/ws && pip install -q -e . 2>&1 | tail -1) || true
+      - name: sidecar index (sidecar/inject arms only)
+        if: inputs.arm == 'sidecar' || inputs.arm == 'inject'
         run: |
           python3 cpu/sidecar.py --ws /tmp/ws --out sidecar/index.json
+      - name: lint (py_compile both harnesses, fail fast on syntax)
+        run: |
+          python3 -m py_compile cpu/kaggle-harness.py cpu/sidecar.py && echo LINT-OK
       - name: agent (10 calls, 20-min wall)
         run: |
           node --version
           ARM_IN="${{ inputs.arm }}"; test -n "$ARM_IN" || ARM_IN="nosidecar"
           PROMPT=cpu/prompt-mini.md; SC=""; ARMNAME="nosidecar-10"
           if [ "$ARM_IN" = "sidecar" ]; then PROMPT=cpu/prompt-sidecar.md; SC="--sidecar-index sidecar/index.json"; ARMNAME="sidecar-10"; fi
-          cp "$PROMPT" /tmp/prompt.md
-          node cpu/smoke-agent.mjs --ws /tmp/ws --task /tmp/task-agent.json --prompt /tmp/prompt.md --url http://localhost:8000/v1/chat/completions --max-calls 10 --arm "$ARMNAME" $SC --out results/
+          if [ "$ARM_IN" = "inject" ]; then PROMPT=cpu/prompt-inject.md; SC="--sidecar-index sidecar/index.json"; ARMNAME="inject-10"; fi
+          sed "s/__MAXCALLS__/10/" "$PROMPT" > /tmp/prompt.md
+          if [ "$ARM_IN" = "inject" ]; then { echo; echo "CANDIDATE EDITS (verify by READ first):"; python3 cpu/sidecar.py --ws /tmp/ws --issue-file /tmp/issue.txt --topk 3 --emit-candidates 2>/dev/null || true; } >> /tmp/prompt.md; fi
+          node cpu/smoke-agent.mjs --ws /tmp/ws --task /tmp/task-agent.json --prompt /tmp/prompt.md --url http://localhost:8000/v1/chat/completions --max-calls 10 --test-files "$(cat /tmp/test-files.txt)" --arm "$ARMNAME" $SC --out results/
+      - name: tree state (D16 clean-tree evidence)
+        if: always()
+        run: |
+          git -C /tmp/ws status --porcelain=v1 | head -20 > results/tree-state.txt || true
+          echo "$GITHUB_SHA" > results/harness-sha.txt
       - name: grade (L0..L3 ladder)
         run: |
           pip install -q pytest httpx
