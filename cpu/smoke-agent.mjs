@@ -289,13 +289,17 @@ while (calls < MAX_CALLS && Date.now() - t0 < 20 * 60 * 1000) {
       if (pa && !pathInTree(pa)) { skipped.push("non-tree:" + pa.slice(0, 60)); continue; }
       pick = a; break;
     }
-    if (!pick) pick = acts[0];
+    if (!pick) pick = { name: "__FILTERED__", rest: "", line: "" };
     skippedBurst += skipped.length;
     const { name, rest } = pick;
     echo = "ACTION: " + name + " " + rest.slice(0, 300);
     calls++;
     const sig = sigOf(name, rest);
-    if (name === "DONE") {
+    if (name === "__FILTERED__") {
+      // fallback hole closed (floor32 pilot-2 lesson): never execute a known
+      // example-copy / repeat / non-tree line. Redirect with ERR instead.
+      result = "ERR: every ACTION line was a format example, a repeat, or a path outside the repo tree. Use REAL paths from the tree above and REAL symbols from KEY LINES. Reply with EXACTLY one ACTION line.";
+    } else if (name === "DONE") {
       log({ turn: calls, raw: text.slice(0, 2000), action: "DONE", skipped });
       const rej = critic(rest);
       if (rej) { result = rej; criticRejects++; }
