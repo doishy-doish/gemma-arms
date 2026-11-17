@@ -212,7 +212,7 @@ async function chat(messages, tries = 5) {
   const t0 = Date.now();
   let last;
   for (let i = 0; i < tries; i++) {
-    const r = await fetch(URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ messages, temperature: 0.2, max_tokens: 512 }) });
+    const r = await fetch(URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ messages, temperature: 0.2, top_p: 0.95, max_tokens: 512 }) });
     if (r.ok) { const j = await r.json(); return { text: j.choices[0].message.content, ms: Date.now() - t0 }; }
     last = "model HTTP " + r.status + " " + (await r.text().catch(() => "")).slice(0, 200);
     await new Promise((r2) => setTimeout(r2, 30000));

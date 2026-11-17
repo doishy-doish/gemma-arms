@@ -1,0 +1,103 @@
+name: cpu-smoke (0.5B CPU brutal filter, no secrets)
+# Mechanics-first: proves the CPU path end-to-end on runner minutes.
+# Verdict ladder L0 (path works) -> L3 (hidden test flips). No SFT, no training, inference-only.
+on:
+  workflow_dispatch:
+    inputs:
+      task:
+        description: "task id (must exist in cpu/tasks-all.jsonl)"
+        default: "rich_2943"
+        required: true
+      arm:
+        description: "nosidecar | sidecar | inject"
+        default: "nosidecar"
+        required: true
+  push:
+    paths: ["cpu/**"]
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - name: pick task
+        run: |
+          TASK_IN="${{ inputs.task }}"; test -n "$TASK_IN" || TASK_IN="rich_2943"
+          ARM_IN="${{ inputs.arm }}"; test -n "$ARM_IN" || ARM_IN="nosidecar"
+          echo "task=$TASK_IN arm=$ARM_IN"
+          grep -c . cpu/tasks-all.jsonl
+          grep "\"id\":\"$TASK_IN\"" cpu/tasks-all.jsonl | head -1 > /tmp/task.json
+          test -s /tmp/task.json || { echo "unknown task"; exit 1; }
+          python3 -c "import json;t=json.load(open('/tmp/task.json'));print(t['id'],t['repo'],t['base_commit'][:8],t['test_files'])"
+          python3 -c "import json;t=json.load(open('/tmp/task.json'));json.dump({'id':t['id'],'repo':t['repo'],'problem_statement':t['problem_statement']},open('/tmp/task-agent.json','w'))"
+          python3 -c "import json;t=json.load(open('/tmp/task.json'));open('/tmp/issue.txt','w').write(t['problem_statement'])"
+          python3 -c "import json;t=json.load(open('/tmp/task.json'));print(' '.join(t.get('test_files') or []))" > /tmp/test-files.txt
+      - name: model server wheel (pinned 0.2.62, CPU, no build)
+        run: |
+          python3 --version
+          pip install -q "llama-cpp-python[server]==0.2.62" --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
+          python3 -c "import llama_cpp, llama_cpp.server; print('server ok', llama_cpp.__version__)"
+      - name: small weights (official first, ~400MB)
+        run: |
+          pip install -q "huggingface_hub[cli]"
+          (hf download Qwen/Qwen2.5-0.5B-Instruct-GGUF qwen2.5-0.5b-instruct-q4_k_m.gguf --local-dir weights/ 2>&1 | tail -1) || \
+          hf download bartowski/Qwen2.5-0.5B-Instruct-GGUF Qwen2.5-0.5B-Instruct-Q4_K_M.gguf --local-dir weights/ 2>&1 | tail -1
+          ls -la weights/
+      - name: serve on :8000 (CPU, ctx 4096)
+        run: |
+          python3 -m llama_cpp.server --model $(echo weights/*.gguf) --host 127.0.0.1 --port 8000 --n_ctx 8192 --n_threads 4 > server.log 2>&1 &
+          for i in $(seq 1 60); do curl -sf http://localhost:8000/v1/models && break || sleep 10; done
+          curl -sf http://localhost:8000/v1/models > /dev/null || { echo "SERVER-NEVER-UP"; tail -30 server.log; exit 1; }
+      - name: task repo at base commit (public, no auth)
+        run: |
+          REPO=$(python3 -c "import json;print(json.load(open('/tmp/task.json'))['repo'])")
+          BASE=$(python3 -c "import json;print(json.load(open('/tmp/task.json'))['base_commit'])")
+          git clone --quiet "https://github.com/${REPO}.git" /tmp/ws
+          git -C /tmp/ws checkout --force --quiet "$BASE"
+          git -C /tmp/ws clean -fdx -q || true
+          git -C /tmp/ws log --oneline -1
+      - name: "task deps (pre-install: mid-run grade checks need them)"
+        run: |
+          pip install -q pytest httpx
+          (cd /tmp/ws && pip install -q -e . 2>&1 | tail -1) || true
+      - name: sidecar index (sidecar/inject arms only)
+        if: inputs.arm == 'sidecar' || inputs.arm == 'inject'
+        run: |
+          python3 cpu/sidecar.py --ws /tmp/ws --out sidecar/index.json
+      - name: lint (py_compile both harnesses, fail fast on syntax)
+        run: |
+          python3 -m py_compile cpu/kaggle-harness.py cpu/sidecar.py && echo LINT-OK
+      - name: agent (10 calls, 20-min wall)
+        run: |
+          node --version
+          ARM_IN="${{ inputs.arm }}"; test -n "$ARM_IN" || ARM_IN="nosidecar"
+          PROMPT=cpu/prompt-mini.md; SC=""; ARMNAME="nosidecar-10"
+          if [ "$ARM_IN" = "sidecar" ]; then PROMPT=cpu/prompt-sidecar.md; SC="--sidecar-index sidecar/index.json"; ARMNAME="sidecar-10"; fi
+          if [ "$ARM_IN" = "floor32" ]; then PROMPT=cpu/prompt-floor32.md; SC=""; ARMNAME="floor32-10"; fi
+          if [ "$ARM_IN" = "inject" ]; then PROMPT=cpu/prompt-inject.md; SC="--sidecar-index sidecar/index.json"; ARMNAME="inject-10"; fi
+          sed "s/__MAXCALLS__/10/" "$PROMPT" > /tmp/prompt.md
+          if [ "$ARM_IN" = "inject" ]; then { echo; echo "CANDIDATE EDITS (verify by READ first):"; python3 cpu/sidecar.py --ws /tmp/ws --issue-file /tmp/issue.txt --topk 3 --emit-candidates 2>/dev/null || true; } >> /tmp/prompt.md; fi
+          node cpu/smoke-agent.mjs --ws /tmp/ws --task /tmp/task-agent.json --prompt /tmp/prompt.md --url http://localhost:8000/v1/chat/completions --max-calls 10 --test-files "$(cat /tmp/test-files.txt)" --arm "$ARMNAME" $SC --out results/
+      - name: tree state (D16 clean-tree evidence)
+        if: always()
+        run: |
+          git -C /tmp/ws status --porcelain=v1 | head -20 > results/tree-state.txt || true
+          echo "$GITHUB_SHA" > results/harness-sha.txt
+      - name: grade (L0..L3 ladder)
+        run: |
+          pip install -q pytest httpx
+          (cd /tmp/ws && pip install -q -e . 2>&1 | tail -1) || true
+          WS=/tmp/ws RES=results TASK_JSON=/tmp/task.json bash cpu/grade.sh 2>&1 | tee results/grade.log
+      - name: spectrum (partial-credit gauge, never fails the job)
+        if: always()
+        run: |
+          node cpu/spectrum.js --res results || true
+      - name: upload
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cpu-smoke-${{ inputs.task }}-${{ inputs.arm }}-${{ github.run_id }}
+          path: |
+            results/
+            server.log
+            sidecar/
