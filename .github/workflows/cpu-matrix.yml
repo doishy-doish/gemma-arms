@@ -29,7 +29,7 @@ jobs:
           sel = "${{ inputs.tasks }}".strip()
           arms_in = "${{ inputs.arms }}".strip()
           calls_in = "${{ inputs.calls }}".strip()
-          arms = ["nosidecar", "sidecar", "inject"] if arms_in == "both" else [a for a in arms_in.split(",") if a in ("nosidecar", "sidecar", "inject")]
+          arms = ["nosidecar", "sidecar", "inject"] if arms_in == "both" else [a for a in arms_in.split(",") if a in ("nosidecar", "sidecar", "inject", "floor32")]
           calls = [int(c) for c in calls_in.split(",") if c.strip() in ("10", "28")] or [10]
           rows = [json.loads(l) for l in open("cpu/tasks-all.jsonl") if l.strip()]
           idset = {r["id"] for r in rows}
@@ -97,6 +97,7 @@ jobs:
           node --version
           PROMPT=cpu/prompt-mini.md; SC=""
           if [ "${{ matrix.arm }}" = "sidecar" ]; then PROMPT=cpu/prompt-sidecar.md; SC="--sidecar-index sidecar/index.json"; fi
+          if [ "${{ matrix.arm }}" = "floor32" ]; then PROMPT=cpu/prompt-floor32.md; SC=""; fi
           if [ "${{ matrix.arm }}" = "inject" ]; then PROMPT=cpu/prompt-inject.md; SC="--sidecar-index sidecar/index.json"; fi
           sed "s/__MAXCALLS__/${{ matrix.calls }}/" "$PROMPT" > /tmp/prompt.md
           if [ "${{ matrix.arm }}" = "inject" ]; then { echo; echo "CANDIDATE EDITS (verify by READ first):"; python3 cpu/sidecar.py --ws /tmp/ws --issue-file /tmp/issue.txt --topk 3 --emit-candidates 2>/dev/null || true; } >> /tmp/prompt.md; fi
@@ -111,6 +112,10 @@ jobs:
           pip install -q pytest
           (cd /tmp/ws && pip install -q -e . 2>&1 | tail -1) || true
           WS=/tmp/ws RES=results TASK_JSON=/tmp/task.json bash cpu/grade.sh 2>&1 | tee results/grade.log
+      - name: spectrum (partial-credit gauge, never fails the job)
+        if: always()
+        run: |
+          node cpu/spectrum.js --res results || true
       - name: upload
         if: always()
         uses: actions/upload-artifact@v4

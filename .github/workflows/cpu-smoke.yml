@@ -73,6 +73,7 @@ jobs:
           ARM_IN="${{ inputs.arm }}"; test -n "$ARM_IN" || ARM_IN="nosidecar"
           PROMPT=cpu/prompt-mini.md; SC=""; ARMNAME="nosidecar-10"
           if [ "$ARM_IN" = "sidecar" ]; then PROMPT=cpu/prompt-sidecar.md; SC="--sidecar-index sidecar/index.json"; ARMNAME="sidecar-10"; fi
+          if [ "$ARM_IN" = "floor32" ]; then PROMPT=cpu/prompt-floor32.md; SC=""; ARMNAME="floor32-10"; fi
           if [ "$ARM_IN" = "inject" ]; then PROMPT=cpu/prompt-inject.md; SC="--sidecar-index sidecar/index.json"; ARMNAME="inject-10"; fi
           sed "s/__MAXCALLS__/10/" "$PROMPT" > /tmp/prompt.md
           if [ "$ARM_IN" = "inject" ]; then { echo; echo "CANDIDATE EDITS (verify by READ first):"; python3 cpu/sidecar.py --ws /tmp/ws --issue-file /tmp/issue.txt --topk 3 --emit-candidates 2>/dev/null || true; } >> /tmp/prompt.md; fi
@@ -87,6 +88,10 @@ jobs:
           pip install -q pytest httpx
           (cd /tmp/ws && pip install -q -e . 2>&1 | tail -1) || true
           WS=/tmp/ws RES=results TASK_JSON=/tmp/task.json bash cpu/grade.sh 2>&1 | tee results/grade.log
+      - name: spectrum (partial-credit gauge, never fails the job)
+        if: always()
+        run: |
+          node cpu/spectrum.js --res results || true
       - name: upload
         if: always()
         uses: actions/upload-artifact@v4
