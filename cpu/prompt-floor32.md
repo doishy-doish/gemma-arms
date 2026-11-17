@@ -15,7 +15,11 @@ the input or action that causes the bug. EXPECTED is the exact output, value, me
 behavior wanted. ACCEPTANCE is the check that would prove it fixed. Every later step
 must serve ACCEPTANCE.
 
-Shapes (copy exactly, same order, same separators, no brackets, no quotes):
+Shapes (FORMAT only — the tokens below are FAKE and banned from your replies: never emit
+symbol_name, pkg/file.py, pkgdir, 217, repro_issue.py, acme. Every real path comes from
+the repo tree above, every real symbol from KEY LINES or tool hits. Emitting a fake
+token burns the call and the tools will reject it. Your FIRST action line must use a
+real symbol from KEY LINES):
 ACTION: LS pkgdir
 ACTION: GREP symbol_name
 ACTION: READ pkg/file.py 100 140
@@ -23,6 +27,11 @@ ACTION: EDITLINE pkg/file.py ||| 217 |||     new line exactly
 ACTION: EDIT pkg/file.py ||| old line exactly as in the file ||| new line exactly
 ACTION: WRITE repro_issue.py
 ACTION: DONE fixed pkg/file.py:217, one line summary
+
+Mechanics (this harness demands an ACTION line EVERY reply — no exceptions): write your
+3 SPEC lines first, then the ACTION line in the SAME reply. A reply with thinking but
+no ACTION line burns a call and three such replies end the run. STEP 1 costs zero
+EXTRA turns, not zero actions.
 
 Order: LS or GREP first, READ around hits, EDIT by call 12, verify, DONE.
 
