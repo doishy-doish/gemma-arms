@@ -1,9 +1,10 @@
 name: verify-19
+# 19-row agent-vs-gold pytest (CPU, no GPU). Must-save 3W, must-catch 4.
 on:
   workflow_dispatch:
     inputs:
       rows:
-        description: "rows"
+        description: "rows (fixed matrix)"
         default: "all"
         required: true
   push:
@@ -23,3 +24,9 @@ jobs:
         with: {python-version: '3.11'}
       - run: pip install -q pytest
       - run: python3 verify-19/verify_run.py --row ${{ matrix.row }} --patch-set ${{ matrix.patch_set }}
+      - name: upload
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verify-${{ matrix.row }}-${{ matrix.patch_set }}
+          path: /tmp/verify19/${{ matrix.row }}-${{ matrix.patch_set }}/result.json
