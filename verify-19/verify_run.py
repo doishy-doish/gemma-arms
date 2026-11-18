@@ -41,9 +41,10 @@ def main():
     import re
     names = sorted(set(re.findall(r"def (test_\w+)", test_patch or "")))[:12]
     sel = " or ".join(names) if names else ""
-    cmd = ["python","-m","pytest","-q","-x","--continue-on-collection-errors","-k",sel] if sel else ["python","-m","pytest","-q","-x","--continue-on-collection-errors"]
+    cmd = ["python","-m","pytest","-q","-x","--continue-on-collection-errors","-W","ignore::pytest.PytestDeprecationWarning","-k",sel] if sel else ["python","-m","pytest","-q","-x","--continue-on-collection-errors","-W","ignore::pytest.PytestDeprecationWarning"]
     pr = sh(cmd, cwd=rdir, timeout=900)
-    rec.update({"pytest_rc":pr.returncode,"test_names":names,"tail":(pr.stdout+pr.stderr)[-2000:]})
+    full = pr.stdout+pr.stderr
+    rec.update({"pytest_rc":pr.returncode,"test_names":names,"failed_lines":[l[:200] for l in full.split("\n") if l.startswith("FAILED") or l.startswith("ERROR")][:20],"tail":full[-2000:]})
     open(os.path.join(wd,"result.json"),"w").write(json.dumps(rec,indent=2))
     print(json.dumps(rec,indent=2))
 if __name__=="__main__": main()
