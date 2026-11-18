@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
-"""VERIFY-19 runner v2 (repo-relative, CPU). Verbose diagnostics."""
-import json, subprocess, os, sys, argparse
+"""VERIFY-19 runner v10 = v9 + pre-submit invariant gate (AST + allowlist + compile).
+Gate runs after cand/test apply, before install. Records gate_* fields and
+gate_block (1 = would-block submit). Pytest still runs to measure (data)."""
+import json, subprocess, os, sys, argparse, ast
 HERE = os.path.dirname(os.path.abspath(__file__))
 def sh(cmd, **kw):
     try: return subprocess.run(cmd, capture_output=True, text=True, **kw)
@@ -36,6 +38,25 @@ def main():
                 "test_stat":((st.stdout or "")+(st.stderr or ""))[-400:]})
     if pa.returncode==0: sh(["git","apply",os.path.join(wd,"cand.patch")], cwd=rdir, timeout=60)
     if pt.returncode==0: sh(["git","apply",os.path.join(wd,"test.patch")], cwd=rdir, timeout=60)
+    # GATE: allowlist + AST + compile on worktree diff (cand-side only: diff of cand.patch files)
+    gate_block, gate_reasons = 0, []
+    ch = [l for l in (sh(["git","diff","--name-only","HEAD","--","."], cwd=rdir, timeout=60).stdout or "").split("\n") if l]
+    bad = [f for f in ch if f.startswith("tests/") or f.endswith((".cfg",".toml",".ini"))]
+    rec["gate_allow"] = 0 if not bad else 1; rec["gate_changed"] = ch[:20]
+    if bad: gate_block = 1; gate_reasons.append("allowlist:"+",".join(bad[:4]))
+    pys = [f for f in ch if f.endswith(".py") and not f.startswith("tests/")]
+    ast_ok, ast_err = 1, ""
+    for f in pys:
+        try: ast.parse(open(os.path.join(rdir,f)).read())
+        except Exception as e: ast_ok = 0; ast_err = "%s (%s)" % (f, e); break
+    rec["gate_ast"] = ast_ok; rec["gate_ast_err"] = ast_err[:200]
+    if not ast_ok: gate_block = 1; gate_reasons.append("ast:"+ast_err[:100])
+    if pys and ast_ok:
+        cr = sh([sys.executable,"-m","py_compile"]+pys, cwd=rdir, timeout=120)
+        rec["gate_compile"] = cr.returncode; rec["gate_compile_err"] = (cr.stderr or "")[-200:]
+        if cr.returncode != 0: gate_block = 1; gate_reasons.append("compile")
+    else: rec["gate_compile"] = -1; rec["gate_compile_err"] = "skipped"
+    rec["gate_block"] = gate_block; rec["gate_reasons"] = gate_reasons
     inst = sh(["pip","install","-q","-e",rdir], timeout=600); rec["install_rc"] = inst.returncode
     tr = os.path.join(rdir,"requirements-tests.txt")
     rec["testreq_rc"] = sh(["pip","install","-q","-r",tr], timeout=600).returncode if os.path.exists(tr) else -1
@@ -50,8 +71,8 @@ def main():
     names = sorted(set(re.findall(r"def (test_\w+)", test_patch or "")))[:12]
     files = sorted(set(re.findall(r"^[+-]{3} [ab]/(\S+\.py)", test_patch or "", re.M)))
     sel = " or ".join(names) if names else ""
-    base = ["python","-m","pytest","-q","-x","--continue-on-collection-errors","-W","ignore::pytest.PytestDeprecationWarning","-W","ignore::DeprecationWarning"]
-    cmd = (base + files + (["-k",sel] if sel else [])) if files else (base + (["-k",sel] if sel else []))
+    base_cmd = ["python","-m","pytest","-q","-x","--continue-on-collection-errors","-W","ignore::pytest.PytestDeprecationWarning","-W","ignore::DeprecationWarning"]
+    cmd = (base_cmd + files + (["-k",sel] if sel else [])) if files else (base_cmd + (["-k",sel] if sel else []))
     pr = sh(cmd, cwd=rdir, timeout=900)
     full = pr.stdout+pr.stderr
     rec.update({"pytest_rc":pr.returncode,"test_names":names,"test_files":files,"failed_lines":[l[:200] for l in full.split("\n") if l.startswith("FAILED") or l.startswith("ERROR")][:20],"tail":full[-4000:]})
