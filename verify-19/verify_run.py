@@ -24,6 +24,7 @@ def main():
     sh(["git","clean","-fdq"], cwd=rdir, timeout=120)
     for nm, content in (("cand.patch",patch or ""),("test.patch",test_patch or "")):
         p = os.path.join(wd,nm)
+        if content and not content.endswith("\n"): content += "\n"
         open(p,"w",newline="").write(content)
         raw = open(p,"rb").read()
         rec[nm+"_bytes"] = len(raw); rec[nm+"_crlf"] = raw.count(b"\r\n"); rec[nm+"_head3"] = "\n".join(content.split("\n")[:3])[:300]
