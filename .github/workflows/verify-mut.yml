@@ -1,0 +1,27 @@
+name: verify-mut
+# rival-mutant pilot B2 (CoEvo-lite step 1): 7 dark rows x agent/gold, hashseed + strict-warnings mutants.
+on:
+  workflow_dispatch:
+  push:
+    paths: ["verify-19/verify_run_mut.py", ".github/workflows/verify-mut.yml"]
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        row: [requests_6589, requests_6592, requests_6629, requests_7205, requests_7309, requests_7315, rich_3296]
+        patch_set: [agent, gold]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - run: pip install -q pytest
+      - run: python3 verify-19/verify_run_mut.py --row ${{ matrix.row }} --patch-set ${{ matrix.patch_set }}
+      - name: upload
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verify-mut-${{ matrix.row }}-${{ matrix.patch_set }}
+          path: /tmp/verify19/${{ matrix.row }}-${{ matrix.patch_set }}/result.json
