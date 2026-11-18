@@ -1,0 +1,21 @@
+name: duck-probe
+# 1-turn anonymous viability probe (DUCK-PROBE-PRE-REG). No secrets, no bulk.
+on:
+  workflow_dispatch:
+  push:
+    paths: ["duck-probe/**", ".github/workflows/duck-probe.yml"]
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '20'}
+      - run: node duck-probe/probe.mjs | tee /tmp/duck-probe.json
+      - name: upload
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: duck-probe
+          path: /tmp/duck-probe.json
