@@ -3,7 +3,7 @@ name: verify32b
 on:
   workflow_dispatch:
   push:
-    paths: ["verify-32/**"]
+    paths: [".github/workflows/verify32b.yml"]
 jobs:
   verify:
     runs-on: ubuntu-latest
