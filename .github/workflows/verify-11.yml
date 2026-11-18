@@ -1,0 +1,27 @@
+name: verify-11
+# decision-set (11 tasks) agent-vs-gold pytest. Survivor of LEAP stack + candidates.
+on:
+  workflow_dispatch:
+  push:
+    paths: ["verify-11/**"]
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        row: [fastapi_5077, fastapi_9425, fastapi_13920, fastapi_14258, fastapi_14479, requests_7328, requests_7427, requests_7433, requests_6589, requests_7205, fastapi_14786]
+        patch_set: [agent, gold]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - run: pip install -q pytest
+      - run: python3 verify-11/verify_run.py --row ${{ matrix.row }} --patch-set ${{ matrix.patch_set }}
+      - name: upload
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verify11-${{ matrix.row }}-${{ matrix.patch_set }}
+          path: /tmp/verify11/${{ matrix.row }}-${{ matrix.patch_set }}/result.json
