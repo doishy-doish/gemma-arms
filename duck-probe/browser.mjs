@@ -1,11 +1,16 @@
-// duck.ai 1-turn Chromium viability (anonymous, no secrets). Playwright.
+// duck.ai 1-turn Chromium viability (anonymous, no secrets). Playwright. v2: proxy-aware + goto diagnostics.
 import { chromium } from 'playwright';
 const MODEL = "tinfoil/gemma4-31b";
 const t0 = Date.now();
 const out = { model: MODEL, browserLaunched: false, cfChallenge: false, statusSeen: false, vqdIssued: false };
 let browser = null;
 try {
-  browser = await chromium.launch({ headless: true, args: ["--disable-blink-features=AutomationControlled", "--no-sandbox"] });
+  const proxyUrl = process.env.https_proxy || process.env.HTTPS_PROXY || process.env.http_proxy || process.env.HTTP_PROXY || null;
+  out.proxyEnvPresent = !!proxyUrl;
+  const launchOpts = { headless: true, args: ["--disable-blink-features=AutomationControlled", "--no-sandbox"] };
+  if (proxyUrl) { try { const u = new URL(proxyUrl); launchOpts.proxy = { server: u.protocol + "//" + u.host }; } catch {} }
+  out.proxyUsed = !!launchOpts.proxy;
+  browser = await chromium.launch(launchOpts);
   out.browserLaunched = true;
   const ctx = await browser.newContext({
     userAgent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
@@ -32,19 +37,26 @@ try {
       }
     } catch {}
   });
-  await page.goto("https://duck.ai/", { waitUntil: "domcontentloaded", timeout: 60000 }).catch(() => {});
+  let gotoRes = null;
+  try {
+    const resp = await page.goto("https://duck.ai/", { waitUntil: "domcontentloaded", timeout: 60000 });
+    gotoRes = { http: resp ? resp.status() : "no-response", url: page.url() };
+  } catch (e) { gotoRes = { err: String(e).slice(0, 200), url: page.url() }; }
+  out.goto = gotoRes;
   await page.waitForTimeout(12000);
   try {
     const title = await page.title();
-    const bodyTxt = (await page.content()).slice(0, 4000);
-    out.cfChallenge = /just a moment|verifying|challenge/i.test(title + " " + bodyTxt);
+    let htmlLen = 0;
+    try { htmlLen = (await page.content()).length; } catch {}
     out.pageTitle = title.slice(0, 120);
+    out.htmlLen = htmlLen;
+    out.cfChallenge = /just a moment|verifying|challenge/i.test(title);
   } catch {}
   if (!vqd) {
     const st = await page.evaluate(async () => {
       try {
         const r = await fetch("https://duckduckgo.com/duckchat/v1/status", { headers: { "x-vqd-accept": "1" } });
-        return { http: r.status, issued: false };
+        return { http: r.status };
       } catch (e) { return { err: String(e).slice(0, 150) }; }
     });
     out.evalStatus = st;
