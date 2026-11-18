@@ -1,7 +1,7 @@
 // duck.ai 1-turn viability probe (anonymous, no secrets). Node 18+.
 const MODEL = "tinfoil/gemma4-31b";
 const t0 = Date.now();
-const st = await fetch("https://duckduckgo.com/duckchat/v1/status", {headers: {"x-vqd-accept": "1"}});
+const st = await fetch("https://duckduckgo.com/duckchat/v1/status", {headers: {"x-vqd-accept": "1", "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36", "Accept": "*/*", "Accept-Language": "en-US,en;q=0.9", "Referer": "https://duck.ai/", "Origin": "https://duck.ai"}});
 const vqd = st.headers.get("x-vqd-4");
 const out = {model: MODEL, statusEndpoint: st.status, vqdIssued: !!vqd};
 if (!vqd) { out.fatal = "no-vqd-token"; console.log(JSON.stringify(out)); process.exit(0); }
