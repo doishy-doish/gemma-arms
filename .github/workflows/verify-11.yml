@@ -24,4 +24,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: verify11-${{ matrix.row }}-${{ matrix.patch_set }}
-          path: /tmp/verify11/${{ matrix.row }}-${{ matrix.patch_set }}/result.json
+          path: /tmp/verify19/${{ matrix.row }}-${{ matrix.patch_set }}/result.json
