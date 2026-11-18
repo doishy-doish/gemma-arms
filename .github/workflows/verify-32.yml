@@ -25,3 +25,5 @@ jobs:
         with:
           name: verify32-${{ matrix.row }}-${{ matrix.patch_set }}
           path: /tmp/verify19/${{ matrix.row }}-${{ matrix.patch_set }}/result.json
+
+# touch: retrigger registration 2026-11-18
