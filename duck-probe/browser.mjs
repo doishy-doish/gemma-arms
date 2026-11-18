@@ -1,98 +1,120 @@
-// duck.ai 1-turn Chromium viability (anonymous, no secrets). Playwright. v2: proxy-aware + goto diagnostics.
+// duck.ai UI-driven 1-turn viability (anonymous, no secrets). Playwright v3.
+// Method per community guides (hirotomasato/duckapi root-cause + pavnxet headless pass):
+// real Chrome (channel="chrome", NOT bundled Chromium) + drive the app's OWN send so the
+// page mints x-fe-signals / x-vqd-hash-1 itself; tee SSE via fetch hook; model via body rewrite.
 import { chromium } from 'playwright';
 const MODEL = "tinfoil/gemma4-31b";
+const REAL_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36";
+const PROMPT = "Reply with exactly: DUCK-OK. Then on a new line, state your model name as you know it in under 10 words.";
 const t0 = Date.now();
-const out = { model: MODEL, browserLaunched: false, cfChallenge: false, statusSeen: false, vqdIssued: false };
+const out = { model: MODEL, chrome: null, sent: false, rewriteApplied: false };
+const HOOK = "Object.defineProperty(navigator,'webdriver',{get:()=>undefined});"
++ "window.__duckai={chunks:[],done:false,err:null,rewrite:null,rewriteApplied:false};"
++ "(function(){const O=window.fetch;window.fetch=async function(u,o){o=o||{};"
++ "if(typeof u==='string'&&u.indexOf('/duckchat/v1/chat')!==-1){"
++ "const D=window.__duckai;D.chunks=[];D.done=false;D.err=null;"
++ "const rw=D.rewrite;D.rewrite=null;"
++ "if(rw&&typeof o.body==='string'){try{const j=JSON.parse(o.body);"
++ "if(rw.model)j.model=rw.model;"
++ "o=Object.assign({},o,{body:JSON.stringify(j)});D.rewriteApplied=true;}catch(e){}}"
++ "const r=await O.call(this,u,o);"
++ "try{const rd=r.clone().body.getReader();const dec=new TextDecoder();"
++ "(async function pump(){try{while(true){const x=await rd.read();"
++ "if(x.done){D.chunks.push(dec.decode());D.done=true;break;}"
++ "const s=dec.decode(x.value,{stream:true});D.chunks.push(s);"
++ "if(s.indexOf('\"action\":\"error\"')!==-1)D.err=s;}"
++ "}catch(e){D.err=String(e);D.done=true;}})();"
++ "}catch(e){D.err=String(e);D.done=true;}"
++ "return r;}return O.apply(this,arguments);};})();";
 let browser = null;
 try {
-  const proxyUrl = process.env.https_proxy || process.env.HTTPS_PROXY || process.env.http_proxy || process.env.HTTP_PROXY || null;
-  out.proxyEnvPresent = !!proxyUrl;
-  const launchOpts = { headless: true, args: ["--disable-blink-features=AutomationControlled", "--no-sandbox"] };
-  if (proxyUrl) { try { const u = new URL(proxyUrl); launchOpts.proxy = { server: u.protocol + "//" + u.host }; } catch {} }
-  out.proxyUsed = !!launchOpts.proxy;
-  browser = await chromium.launch(launchOpts);
-  out.browserLaunched = true;
-  const ctx = await browser.newContext({
-    userAgent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-    viewport: { width: 1280, height: 720 }, locale: "en-US"
-  });
+  const launch = { headless: true, channel: "chrome", args: ["--disable-blink-features=AutomationControlled", "--no-sandbox"] };
+  try { browser = await chromium.launch(launch); out.chrome = "channel-chrome"; }
+  catch (e1) {
+    try { browser = await chromium.launch({ headless: true, executablePath: "/usr/bin/google-chrome", args: launch.args }); out.chrome = "usr-bin-google-chrome"; }
+    catch (e2) { browser = await chromium.launch({ headless: true, args: launch.args }); out.chrome = "bundled-chromium-fallback"; }
+  }
+  const ctx = await browser.newContext({ userAgent: REAL_UA, viewport: { width: 1280, height: 720 }, locale: "en-US" });
+  await ctx.addInitScript(HOOK);
   const page = await ctx.newPage();
-  let vqd = null, vqdRotated = false, chatHttp = null;
-  const rateLimit = {};
   page.on("response", async (r) => {
     try {
-      const u = r.url();
-      if (u.includes("/duckchat/v1/status")) {
-        out.statusSeen = true;
+      if (r.url().indexOf("/duckchat/v1/chat") !== -1) {
+        out.chatHttp = r.status();
         const h = await r.allResponseHeaders();
-        const v = h["x-vqd-4"];
-        if (v) { vqd = v; out.vqdIssued = true; }
-      }
-      if (u.includes("/duckchat/v1/chat")) {
-        chatHttp = r.status();
-        const h = await r.allResponseHeaders();
-        if (h["x-vqd-4"]) vqdRotated = true;
-        for (const k of ["x-ratelimit-limit", "x-ratelimit-remaining", "x-ratelimit-reset", "retry-after"])
-          if (h[k]) rateLimit[k] = h[k];
+        for (const k of ["x-ratelimit-limit", "x-ratelimit-remaining", "x-ratelimit-reset", "retry-after", "x-vqd-4"])
+          if (h[k]) { out.rateLimit = out.rateLimit || {}; out.rateLimit[k] = (k === "x-vqd-4") ? true : h[k]; }
       }
     } catch {}
   });
-  let gotoRes = null;
-  try {
-    const resp = await page.goto("https://duck.ai/", { waitUntil: "domcontentloaded", timeout: 60000 });
-    gotoRes = { http: resp ? resp.status() : "no-response", url: page.url() };
-  } catch (e) { gotoRes = { err: String(e).slice(0, 200), url: page.url() }; }
-  out.goto = gotoRes;
-  await page.waitForTimeout(12000);
-  try {
-    const title = await page.title();
-    let htmlLen = 0;
-    try { htmlLen = (await page.content()).length; } catch {}
-    out.pageTitle = title.slice(0, 120);
-    out.htmlLen = htmlLen;
-    out.cfChallenge = /just a moment|verifying|challenge/i.test(title);
-  } catch {}
-  if (!vqd) {
-    const st = await page.evaluate(async () => {
-      try {
-        const r = await fetch("https://duckduckgo.com/duckchat/v1/status", { headers: { "x-vqd-accept": "1" } });
-        return { http: r.status };
-      } catch (e) { return { err: String(e).slice(0, 150) }; }
-    });
-    out.evalStatus = st;
-    await page.waitForTimeout(4000);
+  const g = await page.goto("https://duck.ai/", { waitUntil: "domcontentloaded", timeout: 60000 }).catch((e) => ({ gotoErr: String(e).slice(0, 160) }));
+  out.goto = g && g.status ? { http: g.status(), url: page.url() } : { err: (g && g.gotoErr) || "goto-failed", url: page.url() };
+  const openedAt = Date.now();
+  let ta = null;
+  for (let i = 0; i < 35; i++) {
+    try { ta = await page.$("textarea"); } catch {}
+    if (ta && Date.now() - openedAt >= 2000) break;
+    await page.waitForTimeout(200);
   }
-  if (!vqd) { out.fatal = "no-vqd-token-browser"; out.totalMs = Date.now() - t0; console.log(JSON.stringify(out)); await browser.close(); process.exit(0); }
+  out.textareaFound = !!ta;
+  if (!ta) { out.fatal = "no-textarea"; out.totalMs = Date.now() - t0; console.log(JSON.stringify(out)); await browser.close(); process.exit(0); }
+  await page.evaluate((rw) => { window.__duckai = { chunks: [], done: false, err: null, rewrite: rw, rewriteApplied: false }; }, { model: MODEL });
+  await ta.click().catch(() => {});
+  await ta.fill(PROMPT).catch(() => {});
+  await page.waitForTimeout(300);
+  let sent = false;
+  try {
+    for (const btn of await page.$$("button")) {
+      let t = "", a = "";
+      try { t = ((await btn.innerText()) || "").trim(); a = (await btn.getAttribute("aria-label")) || ""; } catch {}
+      if (t === "Ask" || t === "Send" || a === "Ask" || a === "Send") { await btn.click({ force: true }).catch(() => {}); sent = true; break; }
+    }
+  } catch {}
+  if (!sent) { try { await ta.press("Enter"); sent = true; out.sentVia = "enter"; } catch {} } else { out.sentVia = "button"; }
+  out.sent = sent;
+  if (!sent) { out.fatal = "send-failed"; out.totalMs = Date.now() - t0; console.log(JSON.stringify(out)); await browser.close(); process.exit(0); }
   const t1 = Date.now();
-  const ans = await page.evaluate(async (args) => {
+  let idx = 0, buf = "", sawData = false, hookErr = null, rewriteApplied = false;
+  const deadline = Date.now() + 120000;
+  while (Date.now() < deadline) {
+    let st = null;
     try {
-      const r = await fetch("https://duckduckgo.com/duckchat/v1/chat", {
-        method: "POST", headers: { "Content-Type": "application/json", "x-vqd-4": args.vqd },
-        body: JSON.stringify({ model: args.model, messages: [{ role: "user", content: "Reply with exactly: DUCK-OK. Then on a new line, state your model name as you know it in under 10 words." }] })
-      });
-      const raw = await r.text();
-      const chunks = [];
-      for (const line of raw.split("\n")) {
-        const t = line.trim();
-        if (!t.startsWith("data:")) continue;
-        const p = t.slice(5).trim();
-        if (p === "[DONE]") break;
-        try {
-          const j = JSON.parse(p);
-          if (typeof j.message === "string") chunks.push(j.message);
-          else if (typeof j.content === "string") chunks.push(j.content);
-          else chunks.push(p.slice(0, 200));
-        } catch (e) { chunks.push(p.slice(0, 200)); }
-      }
-      const answer = chunks.join("");
-      return { http: r.status, rawChars: raw.length, answerChars: answer.length, answerHead200: answer.slice(0, 200), rawHead300: raw.slice(0, 300) };
-    } catch (e) { return { err: String(e).slice(0, 200) }; }
-  }, { vqd, model: MODEL });
-  out.chatHttp = ans.http !== undefined ? ans.http : (chatHttp || ans.err || "eval-failed");
-  out.answerChars = ans.answerChars; out.answerHead200 = ans.answerHead200; out.rawHead300 = ans.rawHead300;
-  out.rawChars = ans.rawChars; if (ans.err && out.answerChars === undefined) out.err = ans.err;
+      st = await page.evaluate((n) => {
+        const D = window.__duckai || { chunks: [], done: false, err: null };
+        return { n: D.chunks.length, text: D.chunks.slice(n).join(""), done: D.done, err: D.err, rw: !!D.rewriteApplied };
+      }, idx);
+    } catch (e) { hookErr = String(e).slice(0, 160); break; }
+    idx = st.n;
+    if (st.rw) rewriteApplied = true;
+    if (st.err) { hookErr = st.err.slice(0, 500); break; }
+    if (st.text) { sawData = true; buf += st.text; }
+    if (st.done) break;
+    await page.waitForTimeout(sawData ? 250 : 500);
+  }
+  out.rewriteApplied = rewriteApplied;
   out.latencyMs = Date.now() - t1;
-  out.vqdRotated = vqdRotated; out.rateLimit = rateLimit;
+  const chunks = [];
+  let errType = null;
+  for (const line of buf.split("\n")) {
+    const t = line.trim();
+    if (t.indexOf("data:") === 0) {
+      const p = t.slice(5).trim();
+      if (p === "[DONE]") continue;
+      try {
+        const j = JSON.parse(p);
+        if (j && j.action === "error") { errType = JSON.stringify(j).slice(0, 200); continue; }
+        if (j && typeof j.message === "string") chunks.push(j.message);
+        else if (j && typeof j.content === "string") chunks.push(j.content);
+      } catch (e) {}
+    }
+  }
+  const answer = chunks.join("");
+  out.answerChars = answer.length;
+  out.answerHead200 = answer.slice(0, 200);
+  if (hookErr) out.hookErr = hookErr.slice(0, 300);
+  if (errType) out.errType = errType;
+  if (!hookErr && !errType && !answer) out.fatal = "empty-stream";
+  out.rawWireChars = buf.length;
   out.totalMs = Date.now() - t0;
   console.log(JSON.stringify(out));
   await browser.close();
