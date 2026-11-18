@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""VERIFY-19 runner v10 = v9 + pre-submit invariant gate (AST + allowlist + compile).
+"""VERIFY-19 runner v11 (cand-only gate: test_patch applies AFTER gate) = v9 + pre-submit invariant gate (AST + allowlist + compile).
 Gate runs after cand/test apply, before install. Records gate_* fields and
 gate_block (1 = would-block submit). Pytest still runs to measure (data)."""
 import json, subprocess, os, sys, argparse, ast
@@ -37,7 +37,6 @@ def main():
                 "test_apply_check":pt.returncode,"test_out":((pt.stdout or "")+(pt.stderr or ""))[-800:],
                 "test_stat":((st.stdout or "")+(st.stderr or ""))[-400:]})
     if pa.returncode==0: sh(["git","apply",os.path.join(wd,"cand.patch")], cwd=rdir, timeout=60)
-    if pt.returncode==0: sh(["git","apply",os.path.join(wd,"test.patch")], cwd=rdir, timeout=60)
     # GATE: allowlist + AST + compile on worktree diff (cand-side only: diff of cand.patch files)
     gate_block, gate_reasons = 0, []
     ch = [l for l in (sh(["git","diff","--name-only","HEAD","--","."], cwd=rdir, timeout=60).stdout or "").split("\n") if l]
@@ -57,6 +56,7 @@ def main():
         if cr.returncode != 0: gate_block = 1; gate_reasons.append("compile")
     else: rec["gate_compile"] = -1; rec["gate_compile_err"] = "skipped"
     rec["gate_block"] = gate_block; rec["gate_reasons"] = gate_reasons
+    if pt.returncode==0: sh(["git","apply",os.path.join(wd,"test.patch")], cwd=rdir, timeout=60)
     inst = sh(["pip","install","-q","-e",rdir], timeout=600); rec["install_rc"] = inst.returncode
     tr = os.path.join(rdir,"requirements-tests.txt")
     rec["testreq_rc"] = sh(["pip","install","-q","-r",tr], timeout=600).returncode if os.path.exists(tr) else -1
