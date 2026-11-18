@@ -1,0 +1,25 @@
+name: duck-probe-browser
+# 1-turn anonymous Chromium viability (DUCK-BROWSER-PRE-REG). No secrets, no bulk.
+on:
+  workflow_dispatch:
+  push:
+    paths: ["duck-probe/browser.mjs", ".github/workflows/duck-probe-browser.yml"]
+jobs:
+  browser-probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '20'}
+      - run: |
+          npm init -y >/dev/null 2>&1 || true
+          npm i playwright@latest
+          npx playwright install chromium --with-deps
+      - run: node duck-probe/browser.mjs | tee /tmp/duck-probe-browser.json
+      - name: upload
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: duck-probe-browser
+          path: /tmp/duck-probe-browser.json
