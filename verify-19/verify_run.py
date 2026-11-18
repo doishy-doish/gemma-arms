@@ -40,8 +40,10 @@ def main():
     tr = os.path.join(rdir,"requirements-tests.txt")
     rec["testreq_rc"] = sh(["pip","install","-q","-r",tr], timeout=600).returncode if os.path.exists(tr) else -1
     vs = sh(["pip","show","starlette","fastapi","httpx","pytest","dirty_equals","inline_snapshot"], timeout=120)
-    rec["pkg_versions"] = (vs.stdout or "")[-1200:]
-    sm = sh(["python","-c","import dirty_equals, inline_snapshot; print(\"smoke-ok\")"], cwd=rdir, timeout=120)
+    fz = sh(["pip", "freeze"], timeout=120)
+    rec["freeze_grep"] = "\n".join([l for l in (fz.stdout or "").split("\n") if any(k in l.lower() for k in ["dirty", "inline", "snapshot", "starlette", "httpx"])])[:800]
+    rec["pkg_versions"] = (vs.stdout or "")
+    sm = sh(["python", "-c", "import dirty_equals; import inline_snapshot; print('smoke-ok')"], cwd=rdir, timeout=120)
     rec["import_smoke"] = ((sm.stdout or "") + (sm.stderr or ""))[-300:]
     dep = sh(["pip","install","-q","httpx","pytest-asyncio","anyio","trio","typer","pytest-timeout","pytest-httpbin"], timeout=600); rec["deps_rc"] = dep.returncode
     import re
