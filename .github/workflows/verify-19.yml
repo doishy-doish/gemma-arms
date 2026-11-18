@@ -1,14 +1,18 @@
 name: verify-19
-"on":
+# 19-row agent-vs-gold pytest (CPU, no GPU). Must-save 3W, must-catch 4.
+on:
   workflow_dispatch:
     inputs:
       rows:
-        description: 'rows (ignored, matrix is fixed)'
-        required: false
-        default: 'all'
+        description: "rows (fixed matrix, ignored)"
+        default: "all"
+        required: true
+  push:
+    paths: ["verify-19/**"]
 jobs:
   verify:
     runs-on: ubuntu-latest
+    timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
