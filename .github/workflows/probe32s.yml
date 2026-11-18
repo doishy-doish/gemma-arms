@@ -1,0 +1,26 @@
+name: probe32s
+on:
+  workflow_dispatch:
+  push:
+    paths: [".github/workflows/probe32s.yml"]
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        row: [fastapi_13920]
+        patch_set: [agent, gold]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - run: pip install -q pytest
+      - run: echo hi
+      - name: upload
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: probe32s-${{ matrix.row }}-${{ matrix.patch_set }}
+          path: /tmp/verify19/${{ matrix.row }}-${{ matrix.patch_set }}/result.json
