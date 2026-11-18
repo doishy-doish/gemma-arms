@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""VERIFY-19 runner v11 (cand-only gate: test_patch applies AFTER gate) = v9 + pre-submit invariant gate (AST + allowlist + compile).
+"""VERIFY-19 runner v12 (=v11 + L3-critic + full-file double-run) (cand-only gate: test_patch applies AFTER gate) = v9 + pre-submit invariant gate (AST + allowlist + compile).
 Gate runs after cand/test apply, before install. Records gate_* fields and
 gate_block (1 = would-block submit). Pytest still runs to measure (data)."""
 import json, subprocess, os, sys, argparse, ast
@@ -76,6 +76,31 @@ def main():
     pr = sh(cmd, cwd=rdir, timeout=900)
     full = pr.stdout+pr.stderr
     rec.update({"pytest_rc":pr.returncode,"test_names":names,"test_files":files,"failed_lines":[l[:200] for l in full.split("\n") if l.startswith("FAILED") or l.startswith("ERROR")][:20],"tail":full[-4000:]})
+    # DOUBLE-RUN (v12): same files WITHOUT -k (full-file view). Cost ~2x pytest, zero new infra.
+    if files:
+        fr = sh(base_cmd + files, cwd=rdir, timeout=900)
+        ffull = fr.stdout+fr.stderr
+        import re as _re
+        _m = _re.search(r"(\d+) passed", ffull); _f = _re.search(r"(\d+) failed", ffull)
+        rec.update({"full_rc":fr.returncode,"full_passed":int(_m.group(1)) if _m else -1,"full_failed":int(_f.group(1)) if _f else 0,
+                    "full_failed_lines":[l[:200] for l in ffull.split("\n") if l.startswith("FAILED") or l.startswith("ERROR")][:5],
+                    "full_tail":ffull[-1500:]})
+    else:
+        rec.update({"full_rc":-1,"full_passed":-1,"full_failed":0,"full_failed_lines":[],"full_tail":"skipped"})
+    # L3-CRITIC (v12, deterministic/exact): hard-block ONLY empty; rest advisory flags.
+    _ch = rec.get("gate_changed", []) or []
+    _src = [f for f in _ch if not f.startswith("tests/")]
+    _cflags = []
+    _h3 = rec.get("cand.patch_head3","") or ""
+    if (rec.get("patch_chars",0) or 0)==0: _cblock=1; _cflags=["empty"]
+    else:
+        _cblock=0
+        if len(_src)==0 and len(_ch)>0: _cflags.append("testonly-diff")
+        if len(_ch)==0:
+            _cflags.append("unapplied-or-invisible" if rec.get("cand_apply_check",0)!=0 else "no-tracked-change")
+        if "new file mode" in _h3 or "repro" in _h3: _cflags.append("pollution:new-file-or-repro")
+        if len(_src)>3: _cflags.append("spray:%d-src-files" % len(_src))
+    rec["critic_block"]=_cblock; rec["critic_flags"]=_cflags
     open(os.path.join(wd,"result.json"),"w").write(json.dumps(rec,indent=2))
     print(json.dumps(rec,indent=2))
 if __name__=="__main__": main()
