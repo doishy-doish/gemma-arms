@@ -37,14 +37,14 @@ def main():
     if pa.returncode==0: sh(["git","apply",os.path.join(wd,"cand.patch")], cwd=rdir, timeout=60)
     if pt.returncode==0: sh(["git","apply",os.path.join(wd,"test.patch")], cwd=rdir, timeout=60)
     inst = sh(["pip","install","-q","-e",rdir], timeout=600); rec["install_rc"] = inst.returncode
-    dep = sh(["pip","install","-q","httpx","pytest-asyncio","anyio","trio"], timeout=600); rec["deps_rc"] = dep.returncode
+    dep = sh(["pip","install","-q","httpx","pytest-asyncio","anyio","trio","typer","pytest-timeout","pytest-httpbin"], timeout=600); rec["deps_rc"] = dep.returncode
     import re
     names = sorted(set(re.findall(r"def (test_\w+)", test_patch or "")))[:12]
     sel = " or ".join(names) if names else ""
-    cmd = ["python","-m","pytest","-q","-x","--continue-on-collection-errors","-W","ignore::pytest.PytestDeprecationWarning","-k",sel] if sel else ["python","-m","pytest","-q","-x","--continue-on-collection-errors","-W","ignore::pytest.PytestDeprecationWarning"]
+    cmd = ["python","-m","pytest","-q","-x","--continue-on-collection-errors","-W","ignore::pytest.PytestDeprecationWarning","-W","ignore::DeprecationWarning","-k",sel] if sel else ["python","-m","pytest","-q","-x","--continue-on-collection-errors","-W","ignore::pytest.PytestDeprecationWarning"]
     pr = sh(cmd, cwd=rdir, timeout=900)
     full = pr.stdout+pr.stderr
-    rec.update({"pytest_rc":pr.returncode,"test_names":names,"failed_lines":[l[:200] for l in full.split("\n") if l.startswith("FAILED") or l.startswith("ERROR")][:20],"tail":full[-2000:]})
+    rec.update({"pytest_rc":pr.returncode,"test_names":names,"failed_lines":[l[:200] for l in full.split("\n") if l.startswith("FAILED") or l.startswith("ERROR")][:20],"tail":full[-4000:]})
     open(os.path.join(wd,"result.json"),"w").write(json.dumps(rec,indent=2))
     print(json.dumps(rec,indent=2))
 if __name__=="__main__": main()
