@@ -1,0 +1,10 @@
+name: probe32
+on:
+  workflow_dispatch:
+  push:
+    paths: ["probe32.txt"]
+jobs:
+  echo:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo hello-$GITHUB_SHA
