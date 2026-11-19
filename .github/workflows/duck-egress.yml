@@ -1,0 +1,21 @@
+name: duck-egress (one-shot GH-IP reputation probe, no browser, no chat)
+on:
+  workflow_dispatch: {}
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: GH egress IP + duck.ai endpoints
+        run: |
+          echo "--- egress IP ---"
+          curl -s -m 20 https://api.ipify.org; echo
+          UA="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36"
+          echo "--- GET /duckchat/v1/models ---"
+          curl -s -m 30 -o /tmp/models.json -w "HTTP=%{http_code} size=%{size_download} time=%{time_total}s\n" -A "$UA" -H "accept: application/json" https://duck.ai/duckchat/v1/models || echo CURL-FAIL
+          head -c 400 /tmp/models.json; echo
+          echo "--- GET /duckchat/v1/status (VQD mint endpoint) ---"
+          curl -s -m 30 -D /tmp/hdrs.txt -o /tmp/status.json -w "HTTP=%{http_code} size=%{size_download} time=%{time_total}s\n" -A "$UA" -H "accept: */*" -H "x-vqd-accept: 1" https://duck.ai/duckchat/v1/status || echo CURL-FAIL
+          head -c 300 /tmp/status.json; echo
+          echo "--- response headers ---"
+          grep -iE "^(HTTP|server:|x-|retry|ratelimit|cf-)" /tmp/hdrs.txt | head -20 || true
