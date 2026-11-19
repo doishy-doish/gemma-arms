@@ -272,7 +272,7 @@ function qsubRun(name, a) {
   }
   return 'ERR: unknown tool '+name;
 }
-function gitDiff() { try { return execFileSync("git", ["-C", WS, "diff", "--", ".:!*.orig"], { encoding: "utf8", maxBuffer: 1 << 20 }); } catch (e) { return "ERR"; } }
+function gitDiff() { try { return execFileSync("git", ["-C", WS, "diff", "--", ".:!*.orig"], { encoding: "utf8", maxBuffer: 1 << 20 }); } catch (e) { try { log({ git: "diff-fail", err: String((e && e.message) || e).slice(0, 300) }); } catch (_) {} return "ERR"; } }
 function diffFiles() {
   try {
     const s = execFileSync("git", ["-C", WS, "diff", "--name-status", "--", ".:!*.orig"], { encoding: "utf8" });
@@ -397,7 +397,7 @@ while (calls < MAX_CALLS && Date.now() - t0 < (QSUB ? 100 : 20) * 60 * 1000) {
     } else if (tc.name === "submit_patch") {
       log({ turn: calls, raw: text.slice(0, 2000), action: "DONE", skipped: [] });
       const rej = critic("submit_patch " + diffFiles().map(x=>x.p).join(" "));
-      if (rej) { result = rej; criticRejects++; }
+      if (rej) { result = rej; criticRejects++; try { log({ turn: calls, result: String(rej).slice(0, 300), critic: "rejected" }); } catch (_) {} }
       else { done = "submit_patch accepted"; log({ turn: calls, result: "DONE accepted" }); break; }
     } else {
       streak = 0;
@@ -435,7 +435,7 @@ while (calls < MAX_CALLS && Date.now() - t0 < (QSUB ? 100 : 20) * 60 * 1000) {
     } else if (name === "DONE") {
       log({ turn: calls, raw: text.slice(0, 2000), action: "DONE", skipped });
       const rej = critic(rest);
-      if (rej) { result = rej; criticRejects++; }
+      if (rej) { result = rej; criticRejects++; try { log({ turn: calls, result: String(rej).slice(0, 300), critic: "rejected" }); } catch (_) {} }
       else { done = rest.slice(0, 300); log({ turn: calls, result: "DONE accepted" }); break; }
     } else if (sig === lastSig) {
       sigRepeats++;
