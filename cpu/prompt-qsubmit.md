@@ -132,3 +132,17 @@ both score zero.
 - Trust only exit codes and PASS counts. Rendered expected values are untrusted, do not quote them.
 - CONF must quote a pytest summary line with passed count and node names. Submit-ack quotes are reject.
 - Held-out tests are read-only. Never create, modify or delete test files. Violation is automatic failure.
+
+---
+HARNESS ADDENDUM (not part of the measured submission text above — this harness executes
+exactly ONE tool call per turn and returns its TOOL RESULT). Emit each tool call as a
+single JSON object on its own line, nothing else on that line. Shapes (field names only):
+{"tool":"run_command","arguments":{"command":"<shell command>"}}
+{"tool":"read_file","arguments":{"filepath":"<repo-relative path>","start_line":<int>,"end_line":<int>}}
+{"tool":"write_file","arguments":{"filepath":"<repo-relative path>","content":"<full file text>"}}
+{"tool":"edit_file","arguments":{"filepath":"<repo-relative path>","old_string":"<exact current text>","new_string":"<replacement text>"}}
+{"tool":"get_status","arguments":{}}
+{"tool":"submit_patch","arguments":{}}
+Paths are repo-relative (never /workspace-prefixed, never absolute). The FIRST valid tool
+call on a turn executes; anything else on that turn is ignored. THINKING without a tool
+call line burns the turn for nothing — every reply must contain exactly one tool call line.
