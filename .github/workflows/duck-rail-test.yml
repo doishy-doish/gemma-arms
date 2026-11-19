@@ -1,0 +1,17 @@
+name: duck-rail-test (one-message browser-rail PONG from GH IP)
+on:
+  workflow_dispatch: {}
+jobs:
+  pong:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: playwright (system Chrome via channel=chrome, no browser download)
+        run: |
+          pip install -q playwright
+          python -c "import playwright; print('pw ok')"
+          (which google-chrome || ls /usr/bin/google-chrome) && google-chrome --version || true
+      - name: one-message PONG via rail
+        run: |
+          cd cpu/duck-rail-test && python rail_pong.py
