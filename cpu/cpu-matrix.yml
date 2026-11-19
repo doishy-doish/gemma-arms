@@ -14,6 +14,10 @@ on:
         description: "subset of 10,28"
         default: "10"
         required: true
+      model:
+        description: "qwen05b | qwen14b (16GB/4vCPU ceiling: 14B Q4 is the sane max)"
+        default: "qwen05b"
+        required: true
 jobs:
   mk:
     runs-on: ubuntu-latest
@@ -62,12 +66,19 @@ jobs:
           python3 --version
           pip install -q "llama-cpp-python[server]==0.2.62" --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
           python3 -c "import llama_cpp, llama_cpp.server; print('server ok', llama_cpp.__version__)"
-      - name: small weights (official first, ~400MB)
+      - name: weights (model input; 14B Q4 ~8.6GB, disk/RAM ceiling)
         run: |
           pip install -q "huggingface_hub[cli]"
-          (hf download Qwen/Qwen2.5-0.5B-Instruct-GGUF qwen2.5-0.5b-instruct-q4_k_m.gguf --local-dir weights/ 2>&1 | tail -1) || \
-          hf download bartowski/Qwen2.5-0.5B-Instruct-GGUF Qwen2.5-0.5B-Instruct-Q4_K_M.gguf --local-dir weights/ 2>&1 | tail -1
+          df -h / | tail -1
+          if [ "${{ inputs.model }}" = "qwen14b" ]; then
+            (hf download Qwen/Qwen2.5-14B-Instruct-GGUF qwen2.5-14b-instruct-q4_k_m.gguf --local-dir weights/ 2>&1 | tail -1) || \
+            hf download bartowski/Qwen2.5-14B-Instruct-GGUF Qwen2.5-14B-Instruct-Q4_K_M.gguf --local-dir weights/ 2>&1 | tail -1
+          else
+            (hf download Qwen/Qwen2.5-0.5B-Instruct-GGUF qwen2.5-0.5b-instruct-q4_k_m.gguf --local-dir weights/ 2>&1 | tail -1) || \
+            hf download bartowski/Qwen2.5-0.5B-Instruct-GGUF Qwen2.5-0.5B-Instruct-Q4_K_M.gguf --local-dir weights/ 2>&1 | tail -1
+          fi
           ls -la weights/
+          df -h / | tail -1
       - name: serve on :8000 (CPU, ctx 4096)
         run: |
           python3 -m llama_cpp.server --model $(echo weights/*.gguf) --host 127.0.0.1 --port 8000 --n_ctx 8192 --n_threads 4 > server.log 2>&1 &
