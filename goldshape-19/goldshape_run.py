@@ -45,7 +45,9 @@ def main():
     elif a.row == "requests_7328":
         dep = sh(["pip","install","-q","responses"], timeout=600)
         rec["deps_rc"] = dep.returncode
-    pr = sh(["python","-m","pytest","-q",os.path.basename(repro_dst)], cwd=rdir, timeout=600)
+    pr = sh(["python","-m","pytest","-q",
+             "-W","ignore::pytest.PytestDeprecationWarning","-W","ignore::DeprecationWarning",
+             os.path.basename(repro_dst)], cwd=rdir, timeout=600)
     full = (pr.stdout or "")+(pr.stderr or "")
     rec.update({"pytest_rc":pr.returncode,
                 "passed":("passed" in full and full.split("passed")[0].split("\n")[-1][-60:]),
