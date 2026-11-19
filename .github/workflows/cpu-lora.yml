@@ -1,0 +1,99 @@
+name: cpu-lora (0.5B LoRA probe, train on CPU + pilot probe, no secrets)
+on:
+  workflow_dispatch:
+    inputs:
+      tasks:
+        description: "space-separated task ids (pilot: 5)"
+        default: "requests_7205 requests_7328 requests_7427 fastapi_15589 rich_4070"
+        required: true
+      epochs:
+        description: "train epochs"
+        default: "1"
+        required: true
+      rank:
+        description: "LoRA rank"
+        default: "8"
+        required: true
+jobs:
+  lora-probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+      - name: python + torch CPU + peft stack
+        run: |
+          python3 --version
+          pip install -q torch --index-url https://download.pytorch.org/whl/cpu
+          pip install -q transformers peft safetensors gguf "huggingface_hub[cli]"
+          python3 -c "import torch,transformers,peft,safetensors,gguf; print('stack ok', torch.__version__)"
+      - name: base weights (HF instruct, fp32 CPU train)
+        run: |
+          hf download Qwen/Qwen2.5-0.5B-Instruct --local-dir base/ 2>&1 | tail -1
+          ls -la base/ | head -20
+      - name: train LoRA (CPU)
+        timeout-minutes: 240
+        run: |
+          python3 cpu/sft-train.py --data cpu/sft-rung1.jsonl --model ./base --out adapter_out/ --epochs "${{ inputs.epochs }}" --rank "${{ inputs.rank }}" 2>&1 | tee train.log
+          ls -la adapter_out/
+          test -s adapter_out/adapter_model.safetensors || { echo "NO ADAPTER WEIGHTS"; exit 1; }
+      - name: convert adapter to GGUF
+        run: |
+          git clone --depth 1 --filter=blob:none --sparse https://github.com/ggml-org/llama.cpp.git /tmp/llamacpp
+          (cd /tmp/llamacpp && git sparse-checkout set convert_lora_to_gguf.py conversion gguf-py && git checkout)
+          ls /tmp/llamacpp/convert_lora_to_gguf.py
+          NO_LOCAL_GGUF=1 python3 /tmp/llamacpp/convert_lora_to_gguf.py --base ./base --outfile adapter.gguf adapter_out/adapter_model.safetensors 2>&1 | tail -5
+          test -s adapter.gguf || { echo "NO GGUF ADAPTER"; exit 1; }
+          ls -la adapter.gguf
+      - name: model server wheel (pinned 0.2.62, CPU) + GGUF base
+        run: |
+          pip install -q "llama-cpp-python[server]==0.2.62" --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
+          pip install -q huggingface_hub
+          (hf download Qwen/Qwen2.5-0.5B-Instruct-GGUF qwen2.5-0.5b-instruct-q4_k_m.gguf --local-dir weights/ 2>&1 | tail -1) || \
+          hf download bartowski/Qwen2.5-0.5B-Instruct-GGUF Qwen2.5-0.5B-Instruct-Q4_K_M.gguf --local-dir weights/ 2>&1 | tail -1
+          ls -la weights/
+      - name: serve base + LoRA on :8000
+        run: |
+          python3 -m llama_cpp.server --model $(echo weights/*.gguf) --lora_path adapter.gguf --host 127.0.0.1 --port 8000 --n_ctx 8192 --n_threads 4 > server.log 2>&1 &
+          for i in $(seq 1 60); do curl -sf http://localhost:8000/v1/models && break || sleep 10; done
+          curl -sf http://localhost:8000/v1/models > /dev/null || { echo "SERVER-NEVER-UP"; tail -30 server.log; exit 1; }
+          curl -sf http://localhost:8000/lora-adapters | tee lora-adapters.json
+      - name: task deps pre-install
+        run: |
+          pip install -q pytest httpx
+      - name: pilot probe (qplus prompt, 10 calls each, sequential)
+        run: |
+          node --version
+          mkdir -p results/
+          sed "s/__MAXCALLS__/10/" cpu/prompt-qplus.md > /tmp/prompt.md
+          for T in ${{ inputs.tasks }}; do
+            grep "\"id\":\"$T\"" cpu/tasks-all.jsonl | head -1 > /tmp/task.json
+            test -s /tmp/task.json || { echo "unknown task $T"; continue; }
+            python3 -c "import json;t=json.load(open('/tmp/task.json'));print(t['id'],t['repo'],t['base_commit'])"
+            python3 -c "import json;t=json.load(open('/tmp/task.json'));json.dump({'id':t['id'],'repo':t['repo'],'problem_statement':t['problem_statement']},open('/tmp/task-agent.json','w'))"
+            python3 -c "import json;t=json.load(open('/tmp/task.json'));open('/tmp/issue.txt','w').write(t['problem_statement'])"
+            python3 -c "import json;t=json.load(open('/tmp/task.json'));print(' '.join(t.get('test_files') or []))" > /tmp/test-files.txt
+            REPO=$(python3 -c "import json;print(json.load(open('/tmp/task.json'))['repo'])")
+            BASE=$(python3 -c "import json;print(json.load(open('/tmp/task.json'))['base_commit'])")
+            rm -rf /tmp/ws && git clone --quiet "https://github.com/${REPO}.git" /tmp/ws
+            git -C /tmp/ws checkout --force --quiet "$BASE"
+            git -C /tmp/ws clean -fdx -q || true
+            (cd /tmp/ws && pip install -q -e . 2>&1 | tail -1) || true
+            mkdir -p results/$T
+            node cpu/smoke-agent.mjs --ws /tmp/ws --task /tmp/task-agent.json --prompt /tmp/prompt.md --url http://localhost:8000/v1/chat/completions --max-calls 10 --test-files "$(cat /tmp/test-files.txt)" --arm "lora-10" --out results/$T/ || true
+            git -C /tmp/ws status --porcelain=v1 | head -20 > results/$T/tree-state.txt || true
+            WS=/tmp/ws RES=results/$T TASK_JSON=/tmp/task.json bash cpu/grade.sh 2>&1 | tee results/$T/grade.log || true
+            node cpu/spectrum.js --res results/$T || true
+          done
+          echo "=== PILOT SUMMARY ==="
+          for T in ${{ inputs.tasks }}; do echo "--- $T"; grep -E "^(L[0-3]|calls=|patch)" results/$T/grade.log 2>/dev/null | head -8 || tail -3 results/$T/grade.log; done
+      - name: upload
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cpu-lora-${{ github.run_id }}
+          path: |
+            results/
+            server.log
+            lora-adapters.json
+            train.log
+            adapter.gguf
