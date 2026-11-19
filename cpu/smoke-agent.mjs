@@ -293,8 +293,15 @@ function diffFiles() {
     return s.split("\n").filter(Boolean).map(l => { const [st, ...rp] = l.split("\t"); return { st: (st || "").trim(), p: rp.join("\t") }; });
   } catch (e) { return []; }
 }
+// drop phantom intent-to-add entries (WRITE does `git add -N`): rm'd scratch
+// files otherwise linger as `D` hunks that trip the critic's test-path rule
+// forever and poison agent.patch with deletion hunks unappliable on a clean
+// tree (v9: 610B patch = good fix + phantom delete -> atomic apply fail).
+// `git reset -q` drops intent entries, keeps worktree (edits) untouched.
+function dropPhantoms() { try { execFileSync("git", ["-C", WS, "reset", "-q"], { encoding: "utf8" }); } catch (e) {} }
 // changes-critic (P14) + finish gate (P17): deterministic pre-DONE review
 function critic(summary) {
+  dropPhantoms();
   const d = gitDiff();
   if (!d.trim() || d.startsWith("ERR")) return "ERR: DONE rejected. Working tree has no patch (0 chars). Make at least one EDIT that changes repo source, then DONE.";
   const files = diffFiles();
@@ -508,6 +515,7 @@ while (calls < MAX_CALLS && Date.now() - t0 < (QSUB ? 100 : 20) * 60 * 1000) {
   }
   } // close post-green !QSUB gate
 }
+dropPhantoms();
 let diff = gitDiff();
 fs.writeFileSync(path.join(OUT, "agent.patch"), diff.startsWith("ERR") ? "" : diff);
 fs.writeFileSync(path.join(OUT, "metrics.json"), JSON.stringify({ task: TASK.id, arm: ARM, calls, done, wall_s: Math.round((Date.now() - t0) / 1000), patch_chars: (diff.startsWith("ERR") ? 0 : diff.length), abort: aborted, green_at: greenAt, critic_rejects: criticRejects, masked_errs: maskedErrs, skipped_burst: skippedBurst, sig_repeats: sigRepeats, gated_rejects: gatedRejects, route: ROUTE, primed: PRIME_SYM, observed_n: observed.size }, null, 1));
