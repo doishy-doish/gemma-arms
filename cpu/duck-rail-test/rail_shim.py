@@ -72,4 +72,4 @@ class H(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     threading.Thread(target=LOOP.run_forever, daemon=True).start()
-    ThreadingHTTPServer(("127.0.0.1", 8000)).serve_forever()
+    ThreadingHTTPServer(("127.0.0.1", 8000), H).serve_forever()
