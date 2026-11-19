@@ -15,7 +15,7 @@ on:
         default: "10"
         required: true
       model:
-        description: "qwen05b | qwen14b (16GB/4vCPU ceiling: 14B Q4 is the sane max)"
+        description: "qwen05b | qwen14b | rail (duck.ai gemma4-31b browser rail)"
         default: "qwen05b"
         required: true
 jobs:
@@ -62,11 +62,13 @@ jobs:
           python3 -c "import json;t=json.load(open('/tmp/task.json'));open('/tmp/issue.txt','w').write(t['problem_statement'])"
           python3 -c "import json;t=json.load(open('/tmp/task.json'));print(' '.join(t.get('test_files') or []))" > /tmp/test-files.txt
       - name: model server wheel (pinned 0.2.62, CPU, no build)
+        if: inputs.model != 'rail'
         run: |
           python3 --version
           pip install -q "llama-cpp-python[server]==0.2.62" --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
           python3 -c "import llama_cpp, llama_cpp.server; print('server ok', llama_cpp.__version__)"
       - name: weights (model input; 14B Q4 ~8.6GB, disk/RAM ceiling)
+        if: inputs.model != 'rail'
         run: |
           pip install -q "huggingface_hub[cli]"
           df -h / | tail -1
@@ -79,9 +81,14 @@ jobs:
           fi
           ls -la weights/
           df -h / | tail -1
-      - name: serve on :8000 (CPU, ctx 4096)
+      - name: serve on :8000 (llama CPU, or duck-rail shim when model=rail)
         run: |
-          python3 -m llama_cpp.server --model $(ls weights/*.gguf | head -1) --host 127.0.0.1 --port 8000 --n_ctx 8192 --n_threads 4 > server.log 2>&1 &
+          if [ "${{ inputs.model }}" = "rail" ]; then
+            pip install -q playwright
+            nohup python3 cpu/duck-rail-test/rail_shim.py > server.log 2>&1 &
+          else
+            python3 -m llama_cpp.server --model $(ls weights/*.gguf | head -1) --host 127.0.0.1 --port 8000 --n_ctx 8192 --n_threads 4 > server.log 2>&1 &
+          fi
           for i in $(seq 1 60); do curl -sf http://localhost:8000/v1/models && break || sleep 10; done
           curl -sf http://localhost:8000/v1/models > /dev/null || { echo "SERVER-NEVER-UP"; tail -30 server.log; exit 1; }
       - name: task repo at base commit (public, no auth)
