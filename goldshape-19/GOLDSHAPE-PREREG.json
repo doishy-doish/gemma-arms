@@ -1,0 +1,6 @@
+{"id": "GOLDSHAPE-PREREG-2026-11-20",
+ "scope": "3 DS-11 never-solves (7427 domain-boundary, 7328 redirect-history, 13920 Depends-in-alias). Public-data reproducers only: 7427 + 13920 copied verbatim from gold test hunks, 7328 re-expressed via responses-adapter mock (no httpbin). Agent rows = banked P0 final patches from patches-32.json (pre-QSTACK lane; caveat filed, not QSTACK trees).",
+ "validation": "Per task, base(none) must FAIL and gold must PASS. If either fails, the REPRODUCER is broken (fix repro, bank nothing). Only validated tasks yield an agent measurement.",
+ "expected": "7427 base FAIL (prelocalhost et al) / gold PASS. 7328 base FAIL (self-ref) / gold PASS. 13920 base FAIL (Depends unresolved) / gold PASS. Agent rows expected FAIL x3 (SEP already shows agent rc=1 on official test_patch); a goldshape agent PASS would contradict SEP and trigger re-audit.",
+ "downstream": "Validated reproducers become the pre-edit-1 gate for future bundles (the 13920 lesson): an edit whose own repro is not gold-shaped buys continuation, never confidence.",
+ "cost": "GH CPU minutes only (9 jobs x ~3min). No GPU, no quota."}
