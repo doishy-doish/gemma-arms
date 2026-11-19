@@ -23,7 +23,7 @@ import https from "node:https";
 // raw http.request has no default headers timeout, so use it with an explicit 55-min cap.
 function postJSON(url, payload, timeoutMs = 3300000) {
   return new Promise((resolve, reject) => {
-    const u = new URL(url);
+    const u = new globalThis.URL(url);
     const lib = u.protocol === "https:" ? https : http;
     const data = JSON.stringify(payload);
     const req = lib.request({ hostname: u.hostname, port: u.port, path: u.pathname + u.search, method: "POST", headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(data) } }, (res) => {
