@@ -29,7 +29,7 @@ function postJSON(url, payload, timeoutMs = 3300000) {
     const req = lib.request({ hostname: u.hostname, port: u.port, path: u.pathname + u.search, method: "POST", headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(data) } }, (res) => {
       let body = "";
       res.on("data", (c) => { body += c; });
-      res.on("end", () => resolve({ ok: res.statusCode >= 200 && res.statusCode < 300, status: res.statusCode, json: async () => JSON.parse(body) }));
+      res.on("end", () => resolve({ ok: res.statusCode >= 200 && res.statusCode < 300, status: res.statusCode, json: async () => JSON.parse(body), text: async () => body }));
     });
     req.on("error", reject);
     req.setTimeout(timeoutMs, () => req.destroy(new Error("postJSON timeout " + timeoutMs)));
