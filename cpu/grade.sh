@@ -14,6 +14,7 @@ test -f "$RES/agent.patch" && echo "L0 PASS: patch file exists ($(wc -c < "$RES/
 echo "== base tests =="
 for _t in $TPY; do (cd "$WS" && python -m pytest "$_t" -q -W "ignore::DeprecationWarning" 2>&1 | tail -2); done | tee "$RES/pytest-base.log"
 echo "== apply agent patch =="
+git -C "$WS" reset -q && git -C "$WS" checkout -- . && git -C "$WS" clean -fdq || echo "RESET-WARN"
 (cd "$WS" && git apply --check "$OLDPWD/$RES/agent.patch" 2>&1 && git apply "$OLDPWD/$RES/agent.patch" && echo APPLIED || echo "NOT-APPLIED-or-empty") | tee "$RES/apply-agent.txt"
 git -C "$WS" status --porcelain=v1 | awk '{print $2}' > "$RES/agent-files.txt" || true
 echo "== apply hidden test patch (grade phase only) =="

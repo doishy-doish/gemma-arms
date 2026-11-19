@@ -266,7 +266,7 @@ function qsubRun(name, a) {
   if (name==='get_status') {
     try {
       const st = execFileSync('git',['-C',WS,'status','--porcelain=v1'],{encoding:'utf8'});
-      const df = execFileSync('git',['-C',WS,'diff','--stat','--','.:!*.orig'],{encoding:'utf8'});
+      const df = execFileSync('git',['-C',WS,'diff','--stat','--','.',':!*.orig'],{encoding:'utf8'});
       return 'OK status:\n'+String(st).slice(0,1500)+'\ndiffstat:\n'+String(df).slice(0,1500);
     } catch(e){ return 'ERR: git failed'; }
   }
@@ -276,7 +276,7 @@ function shellStatus() { try { return execFileSync("bash", ["-c", "git status --
 function shellDiff() { try { return execFileSync("bash", ["-c", "git diff -- . ':!*.orig'"], { cwd: WS, encoding: "utf8", timeout: 60000, maxBuffer: 1 << 20 }); } catch (e) { return "ERR:" + String((e && e.message) || e).slice(0, 120); } }
 function gitDiff() {
   let d = "";
-  try { d = execFileSync("git", ["-C", WS, "diff", "--", ".:!*.orig"], { encoding: "utf8", maxBuffer: 1 << 20 }); }
+  try { d = execFileSync("git", ["-C", WS, "diff", "--", ".", ":!*.orig"], { encoding: "utf8", maxBuffer: 1 << 20 }); }
   catch (e) { try { log({ git: "diff-fail", err: String((e && e.message) || e).slice(0, 300) }); } catch (_) {} return "ERR"; }
   if (!String(d).trim()) {
     const s = shellDiff();
@@ -289,7 +289,7 @@ function gitDiff() {
 }
 function diffFiles() {
   try {
-    const s = execFileSync("git", ["-C", WS, "diff", "--name-status", "--", ".:!*.orig"], { encoding: "utf8" });
+    const s = execFileSync("git", ["-C", WS, "diff", "--name-status", "--", ".", ":!*.orig"], { encoding: "utf8" });
     return s.split("\n").filter(Boolean).map(l => { const [st, ...rp] = l.split("\t"); return { st: (st || "").trim(), p: rp.join("\t") }; });
   } catch (e) { return []; }
 }
