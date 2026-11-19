@@ -17,6 +17,26 @@
 import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
+import http from "node:http";
+import https from "node:https";
+// 14B-CPU: llama.cpp prefill+generate can exceed undici's 300s headers timeout;
+// raw http.request has no default headers timeout, so use it with an explicit 55-min cap.
+function postJSON(url, payload, timeoutMs = 3300000) {
+  return new Promise((resolve, reject) => {
+    const u = new URL(url);
+    const lib = u.protocol === "https:" ? https : http;
+    const data = JSON.stringify(payload);
+    const req = lib.request({ hostname: u.hostname, port: u.port, path: u.pathname + u.search, method: "POST", headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(data) } }, (res) => {
+      let body = "";
+      res.on("data", (c) => { body += c; });
+      res.on("end", () => resolve({ ok: res.statusCode >= 200 && res.statusCode < 300, status: res.statusCode, json: async () => JSON.parse(body) }));
+    });
+    req.on("error", reject);
+    req.setTimeout(timeoutMs, () => req.destroy(new Error("postJSON timeout " + timeoutMs)));
+    req.write(data);
+    req.end();
+  });
+}
 
 const arg = (k, d) => { const i = process.argv.indexOf(k); return i >= 0 ? process.argv[i + 1] : d; };
 const WS = arg("--ws", "/tmp/ws");
@@ -212,7 +232,7 @@ async function chat(messages, tries = 5) {
   const t0 = Date.now();
   let last;
   for (let i = 0; i < tries; i++) {
-    const r = await fetch(URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ messages, temperature: 0.2, top_p: 0.95, max_tokens: 512 }) });
+    const r = await postJSON(URL, { messages, temperature: 0.2, top_p: 0.95, max_tokens: 512 });
     if (r.ok) { const j = await r.json(); return { text: j.choices[0].message.content, ms: Date.now() - t0 }; }
     last = "model HTTP " + r.status + " " + (await r.text().catch(() => "")).slice(0, 200);
     await new Promise((r2) => setTimeout(r2, 30000));
