@@ -203,9 +203,21 @@ function qsubExtract(text) {
   for (const c of cands) {
     let o; try { o = JSON.parse(c); } catch(e){ continue; }
     if (!o || typeof o!=='object') continue;
-    const nm = String(o.tool||o.function_name||o.name||'').toLowerCase();
-    if (!QSUB_TOOLS.has(nm)) continue;
+    let nm = String(o.tool||o.function_name||o.name||'').toLowerCase();
     let args = o.arguments||o.args||o.params||o.parameters||null;
+    if (!nm || !QSUB_TOOLS.has(nm)) {
+      // tool-as-key shapes: {"run_command": {...}} or {"run_command": "<cmd>"}
+      const k = Object.keys(o).find(k=>QSUB_TOOLS.has(String(k).toLowerCase()));
+      if (!k) continue;
+      nm = String(k).toLowerCase();
+      const v = o[k];
+      args = (v && typeof v==='object') ? v : {};
+      if (typeof v === 'string') {
+        if (nm==='run_command') args = {command:v};
+        else if (nm==='read_file'||nm==='write_file'||nm==='edit_file') args = {filepath:v};
+        else args = {};
+      }
+    }
     if (!args) { args = {...o}; delete args.tool; delete args.function_name; delete args.name; }
     return { name: nm, args: args||{} };
   }
