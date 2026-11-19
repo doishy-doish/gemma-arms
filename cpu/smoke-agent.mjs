@@ -273,7 +273,20 @@ function qsubRun(name, a) {
   return 'ERR: unknown tool '+name;
 }
 function shellStatus() { try { return execFileSync("bash", ["-c", "git status --porcelain=v1 | head -10"], { cwd: WS, encoding: "utf8", timeout: 30000 }); } catch (e) { return "ERR:" + String((e && e.message) || e).slice(0, 120); } }
-function gitDiff() { try { return execFileSync("git", ["-C", WS, "diff", "--", ".:!*.orig"], { encoding: "utf8", maxBuffer: 1 << 20 }); } catch (e) { try { log({ git: "diff-fail", err: String((e && e.message) || e).slice(0, 300) }); } catch (_) {} return "ERR"; } }
+function shellDiff() { try { return execFileSync("bash", ["-c", "git diff -- . ':!*.orig'"], { cwd: WS, encoding: "utf8", timeout: 60000, maxBuffer: 1 << 20 }); } catch (e) { return "ERR:" + String((e && e.message) || e).slice(0, 120); } }
+function gitDiff() {
+  let d = "";
+  try { d = execFileSync("git", ["-C", WS, "diff", "--", ".:!*.orig"], { encoding: "utf8", maxBuffer: 1 << 20 }); }
+  catch (e) { try { log({ git: "diff-fail", err: String((e && e.message) || e).slice(0, 300) }); } catch (_) {} return "ERR"; }
+  if (!String(d).trim()) {
+    const s = shellDiff();
+    if (s && !s.startsWith("ERR:") && String(s).trim()) {
+      try { log({ git: "node-empty-shell-nonempty", shell_chars: String(s).length }); } catch (_) {}
+      return s;
+    }
+  }
+  return d;
+}
 function diffFiles() {
   try {
     const s = execFileSync("git", ["-C", WS, "diff", "--name-status", "--", ".:!*.orig"], { encoding: "utf8" });
