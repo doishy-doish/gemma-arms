@@ -1,0 +1,34 @@
+name: goldshape
+# Base-vs-gold-vs-agent on gold-shape reproducers (CPU, no GPU).
+# Validation rule: per task, base must FAIL and gold must PASS, else the
+# reproducer is broken and the agent row does not count. See GOLDSHAPE-PREREG.
+on:
+  workflow_dispatch:
+    inputs:
+      rows:
+        description: "rows (fixed matrix)"
+        default: "all"
+        required: true
+  push:
+    paths: ["goldshape-19/**"]
+jobs:
+  goldshape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        row: [fastapi_13920, requests_7328, requests_7427]
+        patch_set: [none, agent, gold]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - run: pip install -q pytest
+      - run: python3 goldshape-19/goldshape_run.py --row ${{ matrix.row }} --patch-set ${{ matrix.patch_set }}
+      - name: upload
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: goldshape-${{ matrix.row }}-${{ matrix.patch_set }}
+          path: /tmp/goldshape/${{ matrix.row }}-${{ matrix.patch_set }}/result.json
