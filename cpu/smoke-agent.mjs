@@ -183,6 +183,83 @@ function pathArg(name, rest) {
   if (name === "EDIT" || name === "EDITLINE") return ((rest.split(" ||| ")[0]) || "").trim();
   return "";
 }
+// ---- qsubmit arm (verbatim QSTACK submission prompt over rail-31B): JSON tool-call protocol ----
+const QSUB = ARM.startsWith("qsubmit");
+const QSUB_TOOLS = new Set(["run_command","read_file","write_file","edit_file","get_status","submit_patch"]);
+function qsubExtract(text) {
+  const cands = [];
+  const fence = [...text.matchAll(/```(?:json)?\s*([\s\S]*?)```/gi)].map(m=>m[1]);
+  for (const src of [text, ...fence]) {
+    for (let i=0;i<src.length;i++) {
+      if (src[i] !== '{') continue;
+      let d=0, instr=false, esc=false;
+      for (let j=i;j<src.length && j<i+4000;j++) {
+        const c=src[j];
+        if (instr) { if (esc) esc=false; else if (c==='\\') esc=true; else if (c==='"') instr=false; }
+        else { if (c==='"') instr=true; else if (c==='{') d++; else if (c==='}') { d--; if(!d){ cands.push(src.slice(i,j+1)); i=j; break; } } }
+      }
+    }
+  }
+  for (const c of cands) {
+    let o; try { o = JSON.parse(c); } catch(e){ continue; }
+    if (!o || typeof o!=='object') continue;
+    const nm = String(o.tool||o.function_name||o.name||'').toLowerCase();
+    if (!QSUB_TOOLS.has(nm)) continue;
+    let args = o.arguments||o.args||o.params||o.parameters||null;
+    if (!args) { args = {...o}; delete args.tool; delete args.function_name; delete args.name; }
+    return { name: nm, args: args||{} };
+  }
+  return null;
+}
+function qsubRun(name, a) {
+  a = a||{};
+  const rel = (p) => String(p||'').trim().replace(/^\.\//,'').replace(/^\/workspace\//,'');
+  if (name==='run_command') {
+    const cmd = String(a.command||'');
+    if (!cmd) return 'ERR: run_command needs a command string';
+    try {
+      const o = execFileSync('bash',['-c',cmd],{cwd:WS,encoding:'utf8',timeout:110000,maxBuffer:1<<20});
+      return 'exit=0\n'+String(o).slice(-3000);
+    } catch(e) {
+      return 'exit='+((e.status??'?'))+'\n'+String((e.stdout||'')+''+(e.stderr||'')).slice(-3000);
+    }
+  }
+  if (name==='read_file') {
+    const p = rel(a.filepath||a.path); if(!p) return 'ERR: read_file needs filepath';
+    if (!pathInTree(p)) return 'ERR: path outside repo tree: '+p;
+    let lines; try { lines = fs.readFileSync(path.join(WS,p),'utf8').split('\n'); } catch(e){ return 'ERR: no such file: '+p; }
+    const s = Math.max(1, parseInt(a.start_line||a.start||'1',10)||1);
+    const e = Math.min(lines.length, parseInt(a.end_line||a.end||String(s+120),10)||(s+120));
+    if (!(s<=e)) return 'ERR: bad line range';
+    return 'OK '+p+' lines '+s+'-'+e+'/'+lines.length+'\n'+lines.slice(s-1,e).map((l,i)=>'  '+(s+i)+': '+l).join('\n').slice(0,3000);
+  }
+  if (name==='write_file') {
+    const p = rel(a.filepath||a.path); if(!p) return 'ERR: write_file needs filepath';
+    if (!pathInTree(p)) return 'ERR: path outside repo tree: '+p;
+    fs.writeFileSync(path.join(WS,p), String(a.content??''));
+    try { execFileSync('git',['-C',WS,'add','-N',p],{encoding:'utf8'}); } catch(e){}
+    return 'OK wrote '+p+' ('+String(a.content??'').length+' chars)';
+  }
+  if (name==='edit_file') {
+    const p = rel(a.filepath||a.path); if(!p) return 'ERR: edit_file needs filepath';
+    if (!pathInTree(p)) return 'ERR: path outside repo tree: '+p;
+    let src; try { src = fs.readFileSync(path.join(WS,p),'utf8'); } catch(e){ return 'ERR: no such file: '+p; }
+    const oldS = String(a.old_string??a.oldString??''), newS = String(a.new_string??a.newString??'');
+    if (!oldS) return 'ERR: edit_file needs old_string';
+    const ix = src.indexOf(oldS);
+    if (ix<0) return 'ERR: old_string matches 0 occurrences in '+p+' (exact match required)';
+    fs.writeFileSync(path.join(WS,p), src.slice(0,ix)+newS+src.slice(ix+oldS.length));
+    return 'OK edited '+p+' (first of '+(src.split(oldS).length-1)+' occurrence(s) replaced)';
+  }
+  if (name==='get_status') {
+    try {
+      const st = execFileSync('git',['-C',WS,'status','--porcelain=v1'],{encoding:'utf8'});
+      const df = execFileSync('git',['-C',WS,'diff','--stat','--','.:!*.orig'],{encoding:'utf8'});
+      return 'OK status:\n'+String(st).slice(0,1500)+'\ndiffstat:\n'+String(df).slice(0,1500);
+    } catch(e){ return 'ERR: git failed'; }
+  }
+  return 'ERR: unknown tool '+name;
+}
 function gitDiff() { try { return execFileSync("git", ["-C", WS, "diff", "--", ".:!*.orig"], { encoding: "utf8", maxBuffer: 1 << 20 }); } catch (e) { return "ERR"; } }
 function diffFiles() {
   try {
@@ -289,11 +366,35 @@ let lastSig = "", seenSigs = new Set(), streak = 0, aborted = false;
 let greenAt = 0, greenCheckedPatch = -1;
 let criticRejects = 0, maskedErrs = 0, skippedBurst = 0, sigRepeats = 0, gatedRejects = 0;
 log({ system: system.slice(0, 500), problem: problem.slice(0, 500), route: ROUTE, primed: PRIME_SYM });
-while (calls < MAX_CALLS && Date.now() - t0 < 20 * 60 * 1000) {
+while (calls < MAX_CALLS && Date.now() - t0 < (QSUB ? 100 : 20) * 60 * 1000) {
   const { text, ms } = await chat(messages);
   // multi-action parse (F20): scan ALL action lines; skip example-copies, repeats, non-tree paths
   const acts = [...text.matchAll(/^\s*action:\s*([A-Za-z]+)\s*([^\n]*)/gim)].map(m => ({ name: m[1].toUpperCase().trim(), rest: (m[2] || "").trim(), line: m[0].trim() }));
   let result, echo, acted = null, progress = false;
+  if (QSUB) {
+    // thin mode: verbatim submission prompt, JSON tool protocol, no behavioral gates
+    // (S2 forbids early-stop; edit-window/grounding/repeat rules are prompt-managed)
+    const tc = qsubExtract(text);
+    calls++;
+    if (!tc) {
+      result = "ERR: no tool call parsed; reply with ONE JSON tool call (run_command/read_file/write_file/edit_file/get_status/submit_patch).";
+      echo = "(none parsed)";
+      log({ turn: calls, raw: text.slice(0, 2000), action: null, progress: false, streak: streak + 1 });
+      streak++;
+      if (streak >= 8) { aborted = true; log({ turn: calls, result: String(result).slice(0,2000), abort: "qsubmit mute streak=8" }); break; }
+    } else if (tc.name === "submit_patch") {
+      log({ turn: calls, raw: text.slice(0, 2000), action: "DONE", skipped: [] });
+      const rej = critic("submit_patch " + diffFiles().map(x=>x.p).join(" "));
+      if (rej) { result = rej; criticRejects++; }
+      else { done = "submit_patch accepted"; log({ turn: calls, result: "DONE accepted" }); break; }
+    } else {
+      streak = 0;
+      try { result = qsubRun(tc.name, tc.args); } catch (e) { result = "ERR: " + String(e).slice(0, 300); }
+      if (String(result).startsWith("ERR")) maskedErrs++;
+      acted = tc.name; progress = !String(result).startsWith("ERR");
+      log({ turn: calls, raw: text.slice(0, 2000), action: tc.name, progress, streak, skipped: [] });
+    }
+  } else {
   if (!acts.length) {
     calls++; result = "ERR: no ACTION line; reply with ACTION: <tool> <args>"; echo = "ACTION: (none parsed)";
     log({ turn: calls, raw: text.slice(0, 2000), action: null, progress: false, streak: streak + 1 });
@@ -350,17 +451,18 @@ while (calls < MAX_CALLS && Date.now() - t0 < 20 * 60 * 1000) {
       log({ turn: calls, result: String(result).slice(0, 2000), abort: "no-progress streak=3, run capped (F21)" });
       break;
     }
-  }
+  } // close non-QSUB else
   // echo-masking on ERR (P12/P14): failed-action text never re-fed
   const isErr = String(result).startsWith("ERR");
   if (isErr) maskedErrs++;
-  messages.push({ role: "assistant", content: isErr ? "ACTION failed (masked). Switch tools, never repeat." : echo });
-  messages.push({ role: "user", content: "TOOL RESULT:\n" + String(result).slice(0, 3000) + "\nReply with EXACTLY one ACTION line." });
+  messages.push({ role: "assistant", content: QSUB ? (isErr ? "Tool call failed (masked). Send a different tool call, never repeat the same one." : echo) : (isErr ? "ACTION failed (masked). Switch tools, never repeat." : echo) });
+  messages.push({ role: "user", content: QSUB ? ("TOOL RESULT:\n" + String(result).slice(0, 3000) + "\nReply with your next single tool call (first valid call per turn executes; extras ignored).") : ("TOOL RESULT:\n" + String(result).slice(0, 3000) + "\nReply with EXACTLY one ACTION line.") });
   let histChars = 0;
   for (const mm of messages) histChars += (mm.content || "").length;
   while (messages.length > 4 && histChars > 20000) {
     for (const dd of messages.splice(2, 2)) histChars -= (dd.content || "").length;
   }
+  if (!QSUB) {
   // post-green cap (P15): first non-empty patch + suite green -> +2 calls then auto-DONE
   if (!greenAt && acted && EDIT_CLASS.has(acted) && String(result).startsWith("OK")) {
     const now = gitDiff();
@@ -377,6 +479,7 @@ while (calls < MAX_CALLS && Date.now() - t0 < 20 * 60 * 1000) {
     log({ turn: calls, result: "post-green cap fired, auto-DONE" });
     break;
   }
+  } // close post-green !QSUB gate
 }
 let diff = gitDiff();
 fs.writeFileSync(path.join(OUT, "agent.patch"), diff.startsWith("ERR") ? "" : diff);
