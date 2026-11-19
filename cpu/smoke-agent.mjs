@@ -451,6 +451,7 @@ while (calls < MAX_CALLS && Date.now() - t0 < (QSUB ? 100 : 20) * 60 * 1000) {
       log({ turn: calls, result: String(result).slice(0, 2000), abort: "no-progress streak=3, run capped (F21)" });
       break;
     }
+  }
   } // close non-QSUB else
   // echo-masking on ERR (P12/P14): failed-action text never re-fed
   const isErr = String(result).startsWith("ERR");
