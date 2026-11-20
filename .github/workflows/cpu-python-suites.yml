@@ -1,0 +1,56 @@
+name: cpu-python-suites (CPU dataset + fixture + gap4-dry, no GPU, no secrets)
+on:
+  workflow_dispatch:
+    inputs:
+      n:
+        description: "dataset rows (default 450)"
+        default: "450"
+        required: false
+jobs:
+  suites:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: versions
+        run: |
+          python3 --version
+          pip --version
+      - name: build dataset v2 (CPU, synthetic only)
+        working-directory: unified-optimum-build
+        run: |
+          python3 dataset/build_unified_dataset_v2.py --out dataset/unified-m3-pass2-v2.jsonl --n "${{ inputs.n }}"
+          ls -la dataset/
+          wc -l dataset/unified-m3-pass2-v2.jsonl
+      - name: fixture validate v2 (gate)
+        working-directory: unified-optimum-build
+        run: |
+          python3 dataset/fixture_validate_v2.py --in dataset/unified-m3-pass2-v2.jsonl
+      - name: gap4 dry shape check (no torch, no GPU)
+        working-directory: unified-optimum-build
+        run: |
+          python3 train/gap4_speedcheck.py --dry --out train/gap4-result.json
+          cat train/gap4-result.json
+      - name: stats
+        working-directory: unified-optimum-build
+        run: |
+          python3 - <<'PY'
+          import json
+          rows=[json.loads(l) for l in open('dataset/unified-m3-pass2-v2.jsonl') if l.strip()]
+          from collections import Counter
+          print('rows', len(rows))
+          print(Counter(r.get('behavior') for r in rows))
+          import os
+          print('bytes', os.path.getsize('dataset/unified-m3-pass2-v2.jsonl'))
+          PY
+      - name: upload
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cpu-python-suites-${{ github.run_id }}
+          path: |
+            unified-optimum-build/dataset/unified-m3-pass2-v2.jsonl
+            unified-optimum-build/train/gap4-result.json
