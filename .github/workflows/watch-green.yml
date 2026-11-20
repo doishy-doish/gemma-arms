@@ -1,0 +1,99 @@
+name: watch-green (wait for a run, then deliver, background)
+# Background watcher: polls a watched run until it completes, then DELIVERS
+# (downloads its artifacts + commits evidence/watch/<stamp>/STATUS.md back to
+# the repo). No auto-fire of follow-up work. No secrets (same-repo
+# GITHUB_TOKEN only). Leave it running; check the Actions tab or the
+# evidence/watch/ commit for the verdict.
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: "watched run id (e.g. 44807635752)"
+        required: true
+      timeout_min:
+        description: "max wait minutes (job cap 350)"
+        default: "240"
+        required: false
+      poll_sec:
+        description: "poll interval seconds"
+        default: "120"
+        required: false
+permissions:
+  actions: read
+  contents: write
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: wait for watched run
+        run: |
+          set -u
+          RUN_ID="${{ inputs.run_id }}"
+          DEADLINE_MIN="${{ inputs.timeout_min }}"
+          POLL="${{ inputs.poll_sec }}"
+          case "$DEADLINE_MIN" in ''|*[!0-9]*) DEADLINE_MIN=240 ;; esac
+          case "$POLL" in ''|*[!0-9]*) POLL=120 ;; esac
+          [ "$POLL" -lt 30 ] && POLL=30
+          END=$(( $(date +%s) + DEADLINE_MIN*60 ))
+          STAMP=$(date -u +%Y%m%d-%H%M%SZ)
+          DIR="evidence/watch/$STAMP-run$RUN_ID"
+          mkdir -p "$DIR"
+          echo "watching run $RUN_ID until completed (deadline ${DEADLINE_MIN}m, poll ${POLL}s)"
+          while true; do
+            if JSON=$(gh api "repos/doishy-doish/gemma-arms/actions/runs/$RUN_ID" --jq '{status: .status, conclusion: .conclusion, name: .name, head: (.head_sha[:8])}' 2>"$DIR/poll.err"); then
+              echo "$JSON"
+              echo "$JSON" > "$DIR/last-poll.json"
+              [ "$(echo "$JSON" | jq -r .status)" = "completed" ] && break
+            else
+              echo "poll error (retrying):"; tail -3 "$DIR/poll.err" || true
+            fi
+            [ "$(date +%s)" -ge "$END" ] && { echo TIMEOUT > "$DIR/TIMEOUT"; break; }
+            sleep "$POLL"
+          done
+          echo "$STAMP" > "$DIR/stamp.txt"
+          echo "$RUN_ID" > "$DIR/watched-run.txt"
+      - name: deliver (artifacts + verdict receipt)
+        if: always()
+        run: |
+          set -u
+          RUN_ID="${{ inputs.run_id }}"
+          DIR=$(ls -dt evidence/watch/*-run$RUN_ID | head -1)
+          CONC="unknown"
+          [ -f "$DIR/last-poll.json" ] && CONC=$(jq -r .conclusion "$DIR/last-poll.json")
+          [ -f "$DIR/TIMEOUT" ] && CONC="watch-timeout"
+          echo "verdict: $CONC"
+          if [ "$CONC" = "success" ]; then
+            gh run download "$RUN_ID" -D "$DIR/artifacts" 2>&1 | tail -5 || echo "artifact-download-partial"
+            ls -R "$DIR/artifacts" 2>/dev/null | head -30 || true
+          else
+            echo "(no artifact pull on $CONC)"
+          fi
+          gh run view "$RUN_ID" --log > "$DIR/watched-full.log" 2>/dev/null || echo "log-unavailable" > "$DIR/watched-full.log"
+          tail -60 "$DIR/watched-full.log" > "$DIR/watched-logtail.txt" || true
+          {
+            echo "# watch-green verdict"
+            echo ""
+            echo "- watched run: $RUN_ID"
+            echo "- verdict: $CONC"
+            echo "- stamp: $(cat "$DIR/stamp.txt" 2>/dev/null)"
+            echo "- full log: watched-full.log (tail: watched-logtail.txt)"
+            echo ""
+            echo "Next: read STATUS + artifacts here, then decide (no auto-fire)."
+          } > "$DIR/STATUS.md"
+          cat "$DIR/STATUS.md"
+      - name: commit receipt back
+        if: always()
+        run: |
+          set -u
+          RUN_ID="${{ inputs.run_id }}"
+          git config user.name "watch-green"
+          git config user.email "watch-green@users.noreply.github.com"
+          git add evidence/watch/ || true
+          git diff --cached --quiet && { echo "nothing to commit"; exit 0; }
+          CONC=$(jq -r .conclusion "$(ls -dt evidence/watch/*-run$RUN_ID | head -1)/last-poll.json" 2>/dev/null || echo unknown)
+          git commit -m "watch-green: run $RUN_ID -> $CONC" || exit 0
+          git push
