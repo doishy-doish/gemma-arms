@@ -1,0 +1,61 @@
+name: cpu-compressed-05b-4b (lean55 skeleton probe, CPU-only)
+on:
+  workflow_dispatch:
+    inputs:
+      max_tokens:
+        description: "max tokens per model"
+        default: "128"
+        required: false
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: deps (CPU-only)
+        run: |
+          pip install --quiet llama-cpp-python huggingface_hub
+          python3 -c "import llama_cpp; print('llama-cpp ok')"
+      - name: download GGUFs (open weights, no auth)
+        run: |
+          mkdir -p models
+          python3 - <<'PY'
+          from huggingface_hub import hf_hub_download
+          import os
+          # 0.5B (proven small)
+          p1 = hf_hub_download("Qwen/Qwen2.5-0.5B-Instruct-GGUF", "qwen2.5-0.5b-instruct-q4_k_m.gguf", local_dir="models")
+          print("05B", p1, os.path.getsize(p1))
+          # 4B class (open, no gating): Qwen3-4B
+          try:
+            p2 = hf_hub_download("Qwen/Qwen3-4B-GGUF", "qwen3-4b-q4_K_M.gguf", local_dir="models")
+          except Exception as e:
+            print("4B primary name miss:", str(e)[:200])
+            # fallback: list + pick first q4
+            from huggingface_hub import list_repo_files
+            files = list_repo_files("Qwen/Qwen3-4B-GGUF")
+            print(files[:20])
+            cand = [f for f in files if "q4_k_m" in f.lower() and f.endswith(".gguf")]
+            print("candidates", cand[:5])
+            p2 = hf_hub_download("Qwen/Qwen3-4B-GGUF", cand[0], local_dir="models")
+          print("4B", p2, os.path.getsize(p2))
+          PY
+          ls -la models/
+      - name: run compressed-task probe
+        run: |
+          export GGUF_05B=$(ls models/*0.5b*gguf models/*0.5B*gguf 2>/dev/null | head -1)
+          export GGUF_4B=$(ls models/*4b*gguf models/*4B*gguf models/*3b*gguf 2>/dev/null | grep -vi "0.5" | head -1)
+          echo "05B=$GGUF_05B"
+          echo "4B=$GGUF_4B"
+          echo "$GGUF_05B" | grep -q gguf || (echo "05B missing" && exit 1)
+          export OUT=compressed-05b-4b-result.json
+          python3 compressed-task/compressed_05b_4b_test.py
+          cat compressed-05b-4b-result.json
+      - name: upload
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cpu-compressed-05b-4b-${{ github.run_id }}
+          path: compressed-05b-4b-result.json
