@@ -1,0 +1,57 @@
+name: cpu-abliterated-3x (8B abliterated matrix, safe gauge only)
+on:
+  workflow_dispatch:
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - tag: llama8b
+            repo: mlabonne/Meta-Llama-3.1-8B-Instruct-abliterated-GGUF
+            file: meta-llama-3.1-8b-instruct-abliterated.Q4_K_M.gguf
+          - tag: qwen8b
+            repo: DavidAU/Qwen3-8B-Hivemind-Instruct-Heretic-Abliterated-Uncensored-NEO-Imatrix-GGUF
+            file: Qwen3-8B-Hivemind-Inst-Hrtic-Ablit-Uncensored-Q4_K_M-imat.gguf
+          - tag: daredevil8b
+            repo: QuantFactory/NeuralDaredevil-8B-abliterated-GGUF
+            file: NeuralDaredevil-8B-abliterated.Q4_K_M.gguf
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: deps (CPU-only)
+        run: |
+          pip install --quiet llama-cpp-python huggingface_hub
+      - name: download one GGUF
+        run: |
+          python3 - <<'PY'
+          import os
+          from huggingface_hub import hf_hub_download
+          p = hf_hub_download("${{ matrix.repo }}", "${{ matrix.file }}", local_dir="models")
+          print(p, os.path.getsize(p))
+          PY
+          ls -la models/
+      - name: twin + refusal (safe only, same GGUF)
+        run: |
+          export GGUF_05B=$(ls models/*.gguf | head -1)
+          unset GGUF_4B
+          echo "MODEL=$GGUF_05B TAG=${{ matrix.tag }}"
+          export OUT=twin-${{ matrix.tag }}.json
+          python3 compressed-task/compressed_05b_4b_test.py || true
+          cat twin-${{ matrix.tag }}.json || true
+          export OUT=refusal-${{ matrix.tag }}.json
+          cd compressed-task && python3 refusal_gauge.py || true
+          cd ..
+          cat compressed-task/refusal-${{ matrix.tag }}.json || true
+      - name: upload
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: abliterated-${{ matrix.tag }}-${{ github.run_id }}
+          path: |
+            twin-${{ matrix.tag }}.json
+            compressed-task/refusal-${{ matrix.tag }}.json
