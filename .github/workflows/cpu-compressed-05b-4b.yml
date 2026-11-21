@@ -53,9 +53,17 @@ jobs:
           export OUT=compressed-05b-4b-result.json
           python3 compressed-task/compressed_05b_4b_test.py
           cat compressed-05b-4b-result.json
+      - name: run refusal gauge (safe false-refusal, same GGUFs)
+        working-directory: compressed-task
+        run: |
+          export OUT=refusal-result.json
+          python3 refusal_gauge.py
+          cat refusal-result.json
       - name: upload
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: cpu-compressed-05b-4b-${{ github.run_id }}
-          path: compressed-05b-4b-result.json
+          path: |
+            compressed-05b-4b-result.json
+            compressed-task/refusal-result.json
