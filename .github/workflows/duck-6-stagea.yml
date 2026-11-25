@@ -1,0 +1,23 @@
+name: duck-6-stagea (same-6 clean-room, 1 turn each)
+on:
+  workflow_dispatch: {}
+jobs:
+  stagea:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: playwright (system Chrome via channel=chrome, no browser download)
+        run: |
+          pip install -q playwright
+          python -c "import playwright; print('pw ok')"
+          (which google-chrome || ls /usr/bin/google-chrome) && google-chrome --version || true
+      - name: collect 6 diffs via browser rail
+        run: |
+          cd cpu/duck-rail-test && python stagea_6.py
+      - name: upload diffs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: duck6-diffs
+          path: /tmp/duck6_*.diff
