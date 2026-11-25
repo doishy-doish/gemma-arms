@@ -42,4 +42,3 @@ jobs:
           name: duck6b-${{ inputs.task_id }}
           path: /tmp/duck6b_*.diff
           if-no-files-found: error
-          path: /tmp/duck6b_*.diff
