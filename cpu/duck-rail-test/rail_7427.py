@@ -1,0 +1,16 @@
+import asyncio, os, sys
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__))))
+from duckapi_duckai import DuckAISession
+
+PROMPT = "You are an expert Python engineer. Minimal fix only.\n\nISSUE:\nPort bpo-39057 to Requests\n\nThis PR ports a fix from CPython to constrain no_proxy behavior to domain boundaries. This was originally undefined behavior when Requests implemented `no_proxy` support but has since had bug fixes released in both CPython and Curl. We follow suit to conform with ecosystem expectations.\n\nFUNCTION (src/requests/utils.py, exact code at the base commit):\n```python\ndef should_bypass_proxies(url: str, no_proxy: str | None) -> bool:\n    \"\"\"\n    Returns whether we should bypass proxies or not.\n\n    :rtype: bool\n    \"\"\"\n\n    # Prioritize lowercase environment variables over uppercase\n    # to keep a consistent behaviour with other http projects (curl, wget).\n    def get_proxy(key: str) -> str | None:\n        return os.environ.get(key) or os.environ.get(key.upper())\n\n    # First check whether no_proxy is defined. If it is, check that the URL\n    # we're getting isn't in the no_proxy list.\n    no_proxy_arg = no_proxy\n    if no_proxy is None:\n        no_proxy = get_proxy(\"no_proxy\")\n    parsed = urlparse(url)\n    hostname = parsed.hostname\n\n    if hostname is None:\n        # URLs don't always have hostnames, e.g. file:/// urls.\n        return True\n\n    if no_proxy:\n        # We need to check whether we match here. We need to see if we match\n        # the end of the hostname, both with and without the port.\n        no_proxy_hosts = (host for host in no_proxy.replace(\" \", \"\").split(\",\") if host)\n\n        if is_ipv4_address(hostname):\n            for proxy_ip in no_proxy_hosts:\n                if is_valid_cidr(proxy_ip):\n                    if address_in_network(hostname, proxy_ip):\n                        return True\n                elif hostname == proxy_ip:\n                    # If no_proxy ip was defined in plain IP notation instead of cidr notation &\n                    # matches the IP of the index\n                    return True\n        else:\n            host_with_port = hostname\n            if parsed.port:\n                host_with_port += f\":{parsed.port}\"\n\n            for host in no_proxy_hosts:\n                if hostname.endswith(host) or host_with_port.endswith(host):\n                    # The URL does match something in no_proxy, so we don't want\n                    # to apply the proxies on this URL.\n                    return True\n\n    with set_environ(\"no_proxy\", no_proxy_arg):\n        try:\n            bypass = proxy_bypass(hostname)\n        except (TypeError, socket.gaierror):\n            bypass = False\n\n    if bypass:\n        return True\n\n    return False\n```\n\nTASK: Reply with (1) the corrected `for host in no_proxy_hosts:` loop body only, (2) one sentence per edge case: bare-domain entry, entry with port, leading-dot entry. Nothing else."
+
+async def main():
+    s = DuckAISession(model="tinfoil/gemma4-31b", timeout=240.0)
+    try:
+        reply = await s.send(PROMPT, rewrite={"model": "tinfoil/gemma4-31b"})
+        print("REPLY-OK len=", len(reply))
+        print(reply)
+    finally:
+        await s.close()
+
+asyncio.run(main())
