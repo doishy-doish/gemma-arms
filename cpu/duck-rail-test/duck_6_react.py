@@ -250,7 +250,11 @@ def do_tool(tool, work):
             return ("OK rc=%d\n"%rc) + out[-2000:]
         except Exception as e: return "ERR " + str(e)[:300]
     if name == "submit_patch":
-        rc, out = sh("git add -N . && git diff --stat && git diff > /tmpcv.diff; echo WROTE_RC=$?", work)
+        # M390 fix: base is COMMITTED at setup, so plain `git diff HEAD` scoped to
+        # source dirs shows only agent modifications (the old `git add -N .` dumped
+        # the whole tarball as new files = 19MB noise artifact). New .py files the
+        # agent created via shell are appended as /dev/null hunks.
+        rc, out = sh("git diff HEAD -- fastapi requests src > /tmpcv.diff; for f in $(git ls-files --others --exclude-standard -- fastapi requests src 2>/dev/null | grep -E '\\.py$'); do git diff --no-index -- /dev/null \"$f\" 2>/dev/null | tail -n +2 >> /tmpcv.diff; done; echo WROTE_RC=$?; wc -c /tmpcv.diff", work)
         return "SUBMITTED\n" + out[-500:]
     return "ERR unknown tool " + str(name)[:100]
 
@@ -262,7 +266,7 @@ async def run_task(s, pid):
     sh("rm -rf " + work + " && mkdir -p " + work, "/tmp")
     urllib.request.urlretrieve("https://github.com/" + t["repo"] + "/archive/" + t["base"] + ".tar.gz", work + "/src.tgz")
     sh("tar xzf src.tgz -C " + work + " --strip-components=1 && rm src.tgz", work, timeout=120)
-    sh("git init -q . 2>/dev/null; git add -N . 2>/dev/null; echo ok", work)
+    sh("git init -q . 2>/dev/null; git add -A 2>/dev/null; git -c user.email=t@t -c user.name=t commit -qm base 2>/dev/null; echo ok", work)
     hist = SYS + "\nTASK " + pid + " (" + t["repo"] + "@" + t["base"][:12] + "):\n" + t["problem"] + ("\nHINTS:\n"+t["hints"] if t["hints"] else "")
     calls = 0
     for turn in range(80):
@@ -284,7 +288,7 @@ async def run_task(s, pid):
         if obs.startswith("SUBMITTED"):
             sh("cp /tmpcv.diff /tmp/duck6b_" + pid + ".diff 2>/dev/null; echo ok", "/tmp")
             return "submitted calls=%d turns=%d" % (calls, turn)
-    sh("git diff > /tmp/duck6b_" + pid + ".diff 2>/dev/null; echo ok", work)
+    sh("git diff HEAD -- fastapi requests src > /tmp/duck6b_" + pid + ".diff 2>/dev/null; echo ok", work)
     return "budget-out calls=%d" % calls
 
 async def main():
