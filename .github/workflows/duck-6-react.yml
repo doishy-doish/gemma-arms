@@ -1,0 +1,30 @@
+name: duck-6-react (same-harness single task)
+on:
+  workflow_dispatch:
+    inputs:
+      task_id:
+        description: 'task id (one of the 6)'
+        required: true
+        default: 'fastapi_14786'
+jobs:
+  react:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - name: playwright (system Chrome via channel=chrome, no browser download)
+        run: |
+          pip install -q playwright
+          python -c "import playwright; print('pw ok')"
+          (which google-chrome || ls /usr/bin/google-chrome) && google-chrome --version || true
+      - name: react one task via browser rail
+        env:
+          TASK_ID: ${{ inputs.task_id }}
+        run: |
+          cd cpu/duck-rail-test && python duck_6_react.py
+      - name: upload diff
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: duck6b-${{ inputs.task_id }}
+          path: /tmp/duck6b_*.diff
