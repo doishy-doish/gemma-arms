@@ -1,0 +1,17 @@
+name: duck-7427 (clean-room 7427 via Duck Gemma 31B rail)
+on:
+  workflow_dispatch: {}
+jobs:
+  ask:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: playwright (system Chrome via channel=chrome, no browser download)
+        run: |
+          pip install -q playwright
+          python -c "import playwright; print('pw ok')"
+          (which google-chrome || ls /usr/bin/google-chrome) && google-chrome --version || true
+      - name: 7427 clean-room ask
+        run: |
+          cd cpu/duck-rail-test && python rail_7427.py
