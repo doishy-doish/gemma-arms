@@ -17,14 +17,29 @@ jobs:
           pip install -q playwright
           python -c "import playwright; print('pw ok')"
           (which google-chrome || ls /usr/bin/google-chrome) && google-chrome --version || true
+      - name: test deps (M390 — agents burned turns on missing pytest/uv)
+        run: |
+          pip install -q pytest httpx anyio
+          python -c "import pytest, httpx; print('test deps ok')"
       - name: react one task via browser rail
         env:
           TASK_ID: ${{ inputs.task_id }}
         run: |
           cd cpu/duck-rail-test && python duck_6_react.py
+      - name: verify diff (M390 — job must not go green on theater)
+        if: always()
+        run: |
+          f=$(ls -t /tmp/duck6b_*.diff 2>/dev/null | head -1)
+          test -n "$f" || { echo "NO-DIFF-FILE"; exit 1; }
+          sz=$(wc -c < "$f"); echo "diff=$f bytes=$sz"
+          test "$sz" -lt 1000000 || { echo "DIFF-OVER-1MB ($sz) — collect dumped repo again"; exit 1; }
+          grep -q '^+++ b/' "$f" || { echo "NO-FILE-HUNKS"; exit 1; }
+          echo DIFF-OK
       - name: upload diff
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: duck6b-${{ inputs.task_id }}
+          path: /tmp/duck6b_*.diff
+          if-no-files-found: error
           path: /tmp/duck6b_*.diff
