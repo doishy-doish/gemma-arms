@@ -557,12 +557,24 @@ async def main():
             tail = FAIL_TAILS.get(pid, "")[-1500:]
             fb = ("HARNESS FEEDBACK on your prior BLOCKS for " + pid + ":\n" + tail
                   + "\nResubmit BLOCKS ONLY (same contract: FILE:/SEARCH/======/>>>>>>, SEARCH copied verbatim from LOCALIZED CODE). Minimal fix only.\n\n" + PROMPTS[pid])
-            try:
-                reply2 = await s.send(fb, rewrite=REWRITE_LOW_TERSE)
-            except Exception as e:
-                print("TURN2-FAIL " + pid + " " + str(e)[:200], flush=True)
+            reply2 = None
+            for t2a in range(3):
+                try:
+                    _r2 = await s.send(fb, rewrite=REWRITE_LOW_TERSE)
+                except Exception as e:
+                    print("TURN2-FAIL " + pid + " try=" + str(t2a + 1) + " " + str(e)[:200], flush=True)
+                    continue
+                reply2 = _r2
+                print("REPLY2-OK " + pid + " len=" + str(len(reply2)) + " try=" + str(t2a + 1), flush=True)
+                _b2 = reply2.strip()
+                if _b2.startswith("```"):
+                    _ls2 = _b2.split("\n")
+                    _b2 = "\n".join(_ls2[1:-1] if _ls2[-1].strip().startswith("```") else _ls2[1:])
+                _bl2 = _parse_blocks(_b2)
+                if _bl2 and all(p in ALLOW.get(pid, []) for (p, _s, _r) in _bl2):
+                    break
+            if reply2 is None:
                 continue
-            print("REPLY2-OK " + pid + " len=" + str(len(reply2)), flush=True)
             try:
                 open("/tmp/duck6_out/" + pid + ".reply2.txt", "w").write(reply2)
             except Exception:
