@@ -1,4 +1,4 @@
-"""Duck stage-A: same-6 clean-room, one turn each, then public-proxy score.
+"""Duck stage-A R-LOW (reasoning low + terse lock): same-6 clean-room, one turn each, then public-proxy score.
 Model: tinfoil/gemma4-31b via browser rail (pure chat API, no harness in Duck).
 Harness (checkout/apply/pytest) lives HERE, not in the API.
 """
@@ -386,8 +386,10 @@ TASKS = {
 +    ):
 +        router.include_router(router)"""},
 }
+REWRITE_LOW_TERSE = {"model": "tinfoil/gemma4-31b", "reasoningEffort": "low"}
+TERSE_LOCK = "STRICT TERSE CODE-ONLY. Output one unified diff only (git apply compatible, --- a/ +++ b/ headers). No prose, no fences, no explanation, no analysis.\n\n"
 async def ask(s, pid, prompt):
-    reply = await s.send(prompt, rewrite={"model": "tinfoil/gemma4-31b"})
+    reply = await s.send(TERSE_LOCK + prompt, rewrite=REWRITE_LOW_TERSE)
     return reply
 
 def sh(cmd, **kw):
