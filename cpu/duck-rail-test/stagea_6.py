@@ -407,7 +407,7 @@ def harness(pid, reply, t):
     for (path, _s, _r) in blocks:
         if path not in ok_paths:
             print("WRONG-FILE " + pid + " " + path, flush=True)
-            return "wrong-file " + path
+            FAIL_TAILS[pid] = "wrong FILE " + path + " — allowed: " + str(ok_paths); return "wrong-file " + path
     # SLICE-2 (M471): ALL collected outputs go to OUT_DIR only (blocks +
     # real unified diffs + replies + pytest tails). Work checkouts + tarballs
     # stay in /tmp/duck6_<pid> and are NEVER uploaded (prior /tmp/duck6_*
@@ -549,7 +549,7 @@ async def main():
     try:
         t2pids = []
         for pid, res in out:
-            if res.startswith("search-miss") or res.startswith("empty"):
+            if res.startswith("search-miss") or res.startswith("empty") or res.startswith("wrong-file"):
                 t2pids.append(pid)
             elif "testrc=1" in res:
                 t2pids.append(pid)
