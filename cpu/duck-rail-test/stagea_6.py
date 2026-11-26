@@ -175,7 +175,8 @@ Only unique links should be extracted based on their keys. In the example above,
 **Actual Behavior:**
 Duplicate links are present in the extracted results despite `unique=True`, leading to redundant processing of the same URLs.
 
-[/ISSUE]""",
+[/ISSUE]
+""",
 }
 CONTRACT = """OUTPUT CONTRACT (follow exactly):
 - Output edit blocks only: no prose, no fences, no explanation.
@@ -318,7 +319,8 @@ TASKS = {
  
  class LxmlLinkExtractorTestCase(Base.LinkExtractorTestCase):
      extractor_cls = LxmlLinkExtractor
- """},
+ 
+"""},
 }
 REWRITE_LOW_TERSE = {"model": "tinfoil/gemma4-31b", "reasoningEffort": "low"}
 FILE_HINTS = {
@@ -404,7 +406,7 @@ async def ask(s, pid, prompt):
 _DEPS_OK = False
 _DEPS_LOCK = threading.Lock()
 PYTESTS = {
-    """scrapy_s6c""": """tests/test_linkextractors.py -k "test_link_extractor_aggregation"""",
+    """scrapy_s6c""": """undefined -k 'test_link_extractor_aggregation'""",
 }
 def ensure_deps():
     global _DEPS_OK
