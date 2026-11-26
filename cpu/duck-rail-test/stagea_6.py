@@ -364,7 +364,7 @@ def ensure_deps():
         # in fastapi src). Agent never emits it; eval image has it baked. Without it every
         # pytest dies at collection (0/6 verified). Harness-only line (runners are online);
         # the submission bundle itself must still assume offline (M495a).
-        sh("pip install -q fastapi pytest requests python-multipart annotated-doc starlette==0.37.2 httpx==0.27.2 2>&1 | tail -1", timeout=300)
+        sh("pip install -q fastapi pytest pytest-timeout requests python-multipart annotated-doc starlette==0.37.2 httpx==0.27.2 2>&1 | tail -1", timeout=300)
         _DEPS_OK = True
 
 
@@ -469,7 +469,7 @@ def harness(pid, reply, t):
     sh("cd " + work + " && git apply test_patch.diff 2>&1 | head -5; echo TEST_APPLIED_RC=$?", timeout=60)
     ensure_deps()
     tf = PYTESTS.get(pid, "")
-    trc, tout = sh("cd " + work + " && python -m pytest " + tf + " -q > pytest_out.txt 2>&1; echo PYTEST_RC=$?; tail -15 pytest_out.txt", timeout=300)
+    trc, tout = sh("cd " + work + " && python -m pytest " + tf + " -q -W ignore::PendingDeprecationWarning -p no:cacheprovider > pytest_out.txt 2>&1; echo PYTEST_RC=$?; tail -15 pytest_out.txt", timeout=300)
     sh("cp " + work + "/pytest_out.txt " + OUT_DIR + "/" + pid + ".pytest.txt", timeout=30)
     import re as _re
     _m = _re.search(r"PYTEST_RC=(\d+)", tout)
