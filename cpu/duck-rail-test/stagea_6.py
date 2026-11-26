@@ -360,7 +360,11 @@ def ensure_deps():
     with _DEPS_LOCK:
         if _DEPS_OK:
             return
-        sh("pip install -q fastapi pytest requests python-multipart starlette==0.37.2 httpx==0.27.2 2>&1 | tail -1", timeout=300)
+        # DO NOT REMOVE annotated-doc (M495): fastapi runtime dep (`from annotated_doc import Doc`
+        # in fastapi src). Agent never emits it; eval image has it baked. Without it every
+        # pytest dies at collection (0/6 verified). Harness-only line (runners are online);
+        # the submission bundle itself must still assume offline (M495a).
+        sh("pip install -q fastapi pytest requests python-multipart annotated-doc starlette==0.37.2 httpx==0.27.2 2>&1 | tail -1", timeout=300)
         _DEPS_OK = True
 
 
