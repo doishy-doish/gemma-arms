@@ -1,0 +1,39 @@
+name: santa-opt (Elf Calculator exact passes on our_base)
+on:
+  workflow_dispatch:
+    inputs:
+      only:
+        description: 'comma-separated puzzle ids (empty = all 1000)'
+        required: false
+        default: ''
+      passes:
+        description: 'comma list: resynth,suffix,dag,joint'
+        required: false
+        default: 'resynth,suffix,dag,joint'
+jobs:
+  opt:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - name: deps (numpy for dag4/dag5/deep4)
+        run: |
+          pip install -q numpy
+          python -c "import numpy; print('numpy', numpy.__version__)"
+      - name: run santa optimizer
+        env:
+          ONLY: ${{ inputs.only }}
+          PASSES: ${{ inputs.passes }}
+        run: |
+          python santa/santa_opt_run.py --puzzles santa/puzzles.csv --base santa/our_base.csv --out /tmp/santa_best_new.csv --only "$ONLY" --passes "$PASSES"
+      - name: verify + totals
+        run: |
+          python -c "import csv,json; rows=list(csv.DictReader(open('/tmp/santa_best_new.csv'))); print('rows',len(rows),'total',sum(len(json.loads(r['program'])) for r in rows))"
+          ls -la /tmp/santa_best_new.csv
+      - name: upload improved submission
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: santa-best-new
+          path: /tmp/santa_best_new.csv
+          if-no-files-found: error
