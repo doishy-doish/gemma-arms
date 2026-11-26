@@ -370,7 +370,7 @@ def _parse_blocks(body):
     return blocks or None
 
 async def ask(s, pid, prompt):
-    full = CONTRACT + FILE_HINTS.get(pid, "") + " " + EDGE_HINTS.get(pid, "") + " " + ORACLES.get(pid, "") + "\n\n" + prompt
+    full = CONTRACT + " Emit exactly ONE FILE:/SEARCH/REPLACE triple; SEARCH must be a verbatim copy of source lines (full signature, no truncation) or the reply voids.\n\n" + prompt
     last = ""
     for attempt in range(3):
         q = full if attempt == 0 else "INVALID prior output (unparseable block, wrong FILE, or ambiguous SEARCH). Resubmit BLOCKS ONLY, correct FILE, SEARCH copied verbatim from LOCALIZED CODE.\n\n" + full
