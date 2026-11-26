@@ -166,7 +166,8 @@ The generated URL omits the query string, resulting in:
 'http://example.com:5432/1/2/3'
 ```
 This omission prevents the application from recognizing and utilizing the query parameters as intended.
-[/ISSUE]""",
+[/ISSUE]
+""",
 }
 CONTRACT = """OUTPUT CONTRACT (follow exactly):
 - Output edit blocks only: no prose, no fences, no explanation.
@@ -224,7 +225,8 @@ TASKS = {
 +
      def test_current_route_path(self):
          from pyramid.interfaces import IRoutesMapper
-         request = self._makeOne()"""},
+         request = self._makeOne()
+"""},
 }
 REWRITE_LOW_TERSE = {"model": "tinfoil/gemma4-31b", "reasoningEffort": "low"}
 FILE_HINTS = {
@@ -310,7 +312,7 @@ async def ask(s, pid, prompt):
 _DEPS_OK = False
 _DEPS_LOCK = threading.Lock()
 PYTESTS = {
-    """pyramid_s6a""": """tests/test_url.py -k "test_current_route_url_with_request_query or test_current_route_url_with_query_override"""",
+    """pyramid_s6a""": """undefined -k 'test_current_route_url_with_request_query or test_current_route_url_with_query_override'""",
 }
 def ensure_deps():
     global _DEPS_OK
