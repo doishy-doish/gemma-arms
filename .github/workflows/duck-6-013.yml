@@ -1,0 +1,27 @@
+name: duck-6-013 (.13-policy repro, 1-turn x6)
+on:
+  workflow_dispatch: {}
+jobs:
+  stagea:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: playwright (system Chrome via channel=chrome, no browser download)
+        run: |
+          pip install -q playwright
+          python -c "import playwright; print('pw ok')"
+          (which google-chrome || ls /usr/bin/google-chrome) && google-chrome --version || true
+      - name: collect 6 diffs via browser rail
+        run: |
+          cd cpu/duck-rail-test && python stagea_013.py
+      - name: upload diffs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: duck6-013
+          # SLICE-2 TIGHT GLOB (M471): OUT_DIR only — .blocks + .diff +
+          # .reply.txt + .pytest.txt. Checkouts/tarballs in /tmp/duck6_<pid>
+          # are NEVER uploaded (prior /tmp/duck6_* glob = 146MB bloat).
+          path: /tmp/duck6_out/
+          if-no-files-found: warn
