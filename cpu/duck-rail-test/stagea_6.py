@@ -2,7 +2,7 @@
 Model: tinfoil/gemma4-31b via browser rail (pure chat API, no harness in Duck).
 Harness (checkout/apply/pytest) lives HERE, not in the API.
 """
-import asyncio, os, sys, subprocess, tarfile, urllib.request
+import asyncio, os, sys, subprocess, tarfile, threading, urllib.request
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from duckapi_duckai import DuckAISession
 
@@ -411,7 +411,7 @@ ORACLES = {
     "fastapi_15589": "ORACLE: non-empty diff required; empty output = FAIL.",
     "requests_7427": "ORACLE: after split comma STRIP each entry; bare dot matches all; port entries: netloc == x or netloc endswith dot+x (subdomain+port); others: lstrip dot then hostname == x or endswith dot+x.",
 }
-TERSE_LOCK = "STRICT TERSE CODE-ONLY. Output one unified diff only (git apply compatible, --- a/ +++ b/ headers). No prose, no fences, no explanation, no analysis. COMPLETENESS OVER BREVITY on edge cases (ports, dot-boundary, host_with_port).\n\n"
+TERSE_LOCK = "STRICT TERSE CODE-ONLY. Output one unified diff only (git apply compatible, --- a/ +++ b/ headers). No prose, no fences, no explanation, no analysis. COMPLETENESS OVER BREVITY on edge cases (ports, dot-boundary, host_with_port). Empty output is FAIL: never return zero hunks.\n\n"
 def _valid_diff(body):
     return "--- a/" in body and "+++ b/" in body and len(body.strip()) > 50
 async def ask(s, pid, prompt):
@@ -430,6 +430,25 @@ async def ask(s, pid, prompt):
         print("RETRY " + pid + " attempt=" + str(attempt + 1) + " len=" + str(len(reply)), flush=True)
     return last
 
+_DEPS_OK = False
+_DEPS_LOCK = threading.Lock()
+PYTESTS = {
+    "fastapi_14786": "tests/test_security_http_base.py",
+    "fastapi_13537": "tests/test_form_default.py",
+    "requests_7427": "tests/test_utils.py -k bypass",
+    "fastapi_15589": "tests/test_query_cookie_header_model_extra_params.py",
+    "fastapi_13920": "tests/test_dependency_pep695.py",
+    "fastapi_14258": "tests/test_router_circular_import.py",
+}
+def ensure_deps():
+    global _DEPS_OK
+    with _DEPS_LOCK:
+        if _DEPS_OK:
+            return
+        sh("pip install -q fastapi pytest httpx requests python-multipart 2>&1 | tail -1", timeout=300)
+        _DEPS_OK = True
+
+
 def sh(cmd, **kw):
     p = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=kw.get("timeout", 300))
     return p.returncode, (p.stdout or "")[-2000:] + (p.stderr or "")[-2000:]
@@ -439,6 +458,9 @@ def harness(pid, reply, t):
     if body.startswith("\u0060\u0060\u0060"):
         ls = body.split("\n")
         body = "\n".join(ls[1:-1] if ls[-1].strip().startswith("\u0060\u0060\u0060") else ls[1:])
+    if len(body) < 50 or "--- a/" not in body:
+        print("EMPTY-DIFF " + pid + " len=" + str(len(body)), flush=True)
+        return "empty len=" + str(len(body))
     diff_path = "/tmp/duck6_" + pid + ".diff"
     open(diff_path, "w").write(body if body.endswith("\n") else body + "\n")
     work = "/tmp/duck6_" + pid
@@ -456,7 +478,11 @@ def harness(pid, reply, t):
     sh("cd " + work + " && git apply /tmp/duck6_" + pid + ".diff 2>&1 | head -5; echo APPLIED_RC=$?", timeout=60)
     open(work + "/test_patch.diff", "w").write(t["test_patch"] if t["test_patch"].endswith("\n") else t["test_patch"] + "\n")
     sh("cd " + work + " && git apply test_patch.diff 2>&1 | head -5; echo TEST_APPLIED_RC=$?", timeout=60)
-    return "collected len=" + str(len(reply))
+    ensure_deps()
+    tf = PYTESTS.get(pid, "")
+    trc, tout = sh("cd " + work + " && python -m pytest " + tf + " -q 2>&1 | tail -15", timeout=300)
+    print("TEST-RESULT " + pid + " rc=" + str(trc) + " " + tout[-800:], flush=True)
+    return "collected len=" + str(len(reply)) + " testrc=" + str(trc)
 async def main():
     s = DuckAISession(model="tinfoil/gemma4-31b", timeout=240.0)
     results = {}
