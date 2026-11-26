@@ -403,6 +403,14 @@ EDGE_HINTS = {
     "fastapi_15589": "Non-empty diff required; empty output = FAIL, retry.",
     "requests_7427": "COMPLETENESS OVER BREVITY: handle host_with_port exact match, lstrip dot then dot-boundary (hostname == host or endswith dot+host), bare-dot entry must match. Ports matter.",
 }
+ORACLES = {
+    "fastapi_14786": "ORACLE: return scheme, param.strip().",
+    "fastapi_13537": "ORACLE: track visited fields; extra keys pass through; correct file only.",
+    "fastapi_13920": "ORACLE: unwrap TypeAliasType without breaking get_dependant.",
+    "fastapi_14258": "ORACLE: raise AssertionError with EXACT message: Cannot include the same APIRouter instance into itself. Did you mean to include a different router? (test uses match= on this string).",
+    "fastapi_15589": "ORACLE: non-empty diff required; empty output = FAIL.",
+    "requests_7427": "ORACLE: after split comma STRIP each entry; bare dot matches all; port entries: netloc == x or netloc endswith dot+x (subdomain+port); others: lstrip dot then hostname == x or endswith dot+x.",
+}
 TERSE_LOCK = "STRICT TERSE CODE-ONLY. Output one unified diff only (git apply compatible, --- a/ +++ b/ headers). No prose, no fences, no explanation, no analysis. COMPLETENESS OVER BREVITY on edge cases (ports, dot-boundary, host_with_port).\n\n"
 def _valid_diff(body):
     return "--- a/" in body and "+++ b/" in body and len(body.strip()) > 50
