@@ -303,8 +303,21 @@ async def run_task(s, pid):
     calls = 0
     submitted = 0
     edited_since_submit = True
+    rail_blips = 0
     for turn in range(80):
-        reply = await s.send(hist[-12000:], rewrite={"model": "tinfoil/gemma4-31b"})
+        reply = None
+        for attempt in range(3):
+            try:
+                reply = await s.send(hist[-12000:], rewrite={"model": "tinfoil/gemma4-31b"})
+                break
+            except Exception as e:
+                rail_blips += 1
+                print(pid + " turn=%d rail-blip attempt=%d err=%s" % (turn, attempt, str(e)[:120]), flush=True)
+                await asyncio.sleep(30)
+        if reply is None:
+            # rail dead after 3 tries: K-ABORT -- keep cleanest compilable diff and submit it
+            sh("git diff HEAD -- fastapi requests src > /tmp/duck6b_" + pid + ".diff 2>/dev/null; echo ok", work)
+            return "rail-dead-forced-submit calls=%d turns=%d blips=%d" % (calls, turn, rail_blips)
         m = TOOL_RE.search(reply)
         if not m:
             hist += "\n[assistant text, no tool]\n" + reply[-1500:] + "\n[system: reply with exactly one <<<TOOL:{...}>>> per turn]"
@@ -320,14 +333,21 @@ async def run_task(s, pid):
         if tool.get("tool") != "submit_patch": calls += 1
         if calls > 28 and tool.get("tool") != "submit_patch":
             hist += "\n[system: 28-call budget spent; submit now or stop]"; continue
+        if tool.get("tool") == "submit_patch" and not edited_since_submit and submitted > 0:
+            hist += "\n[system: no edit since last submit -- submit refused, edit first]"; continue
         obs = do_tool(tool, work)
+        if tool.get("tool") != "submit_patch" and tool.get("tool") != "get_status":
+            edited_since_submit = True
         hist += "\n[tool " + tool.get("tool","?") + " ->]\n" + obs[-2000:]
         print(pid + " turn=%d calls=%d tool=%s obs=%.120s" % (turn, calls, tool.get("tool"), obs.replace("\n"," ")), flush=True)
         if obs.startswith("SUBMITTED"):
+            submitted += 1
+            edited_since_submit = False
             sh("cp /tmpcv.diff /tmp/duck6b_" + pid + ".diff 2>/dev/null; echo ok", "/tmp")
             return "submitted calls=%d turns=%d" % (calls, turn)
+    # budget-out: K-ABORT -- keep cleanest compilable diff and submit it, never end empty
     sh("git diff HEAD -- fastapi requests src > /tmp/duck6b_" + pid + ".diff 2>/dev/null; echo ok", work)
-    return "budget-out calls=%d" % calls
+    return "budget-out-forced-submit calls=%d" % calls
 
 async def main():
     only = os.environ.get("TASK_ID", "").strip()
