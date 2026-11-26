@@ -287,10 +287,10 @@ EDGE_HINTS = {
 ORACLES = {
     "fastapi_14786": "ORACLE: return scheme, param.strip().",
     "fastapi_13537": "ORACLE: track visited fields; extra keys pass through; correct file only.",
-    "fastapi_13920": "ORACLE: unwrap PEP-695 TypeAliasType via annotation.__value__ inside analyze_param (gold: is_typealiastype check then annotation = annotation.__value__); keep get_dependant intact; non-empty diff required.",
+    "fastapi_13920": "ORACLE: FILE must be fastapi/dependencies/utils.py. FIRST add import line [from typing_inspection.typing_objects import is_typealiastype] with the other imports. THEN in analyze_param insert exactly [if is_typealiastype(annotation): annotation = annotation.__value__] before the Signature.empty check. FORBID: defining any helper (is_type_alias_type etc), editing fastapi/utils.py, using typing._TypeAliasType, get_args/get_origin rewrites, touching get_dependant. Non-empty diff required.",
     "fastapi_14258": "ORACLE: raise AssertionError with EXACT message: Cannot include the same APIRouter instance into itself. Did you mean to include a different router? (test uses match= on this string).",
     "fastapi_15589": "ORACLE: mark BOTH the converted alias and the original field alias as processed (gold adds processed_keys for the lookup alias AND get_validation_alias(field)); non-empty diff required; empty output = FAIL.",
-    "requests_7427": "ORACLE: after split comma STRIP each entry; bare dot matches all; port entries: netloc == x or netloc endswith dot+x (subdomain+port); others: lstrip dot then hostname == x or endswith dot+x; prelocalhost must NOT match a localhost entry (dot boundary; failing case: domain_boundary[http://prelocalhost/-False]).",
+    "requests_7427": "ORACLE: FILE must be src/requests/utils.py. After split comma STRIP each entry; bare dot matches all. Exact recipe: [host = host.lstrip(\".\"); if hostname == host or host_with_port == host: return True; host = \".\" + host; if hostname.endswith(host) or host_with_port.endswith(host): return True]. Port entries compare against netloc (host_with_port); others lstrip dot then hostname == x or endswith dot+x. FORBID: a/requests path, startswith(entry+\".\") mirror logic, bare endswith(x) without dot. prelocalhost must NOT match localhost (dot boundary).",
 }
 def _parse_blocks(body):
     # SLICE-2 delimiter tolerance: models wrap blocks in fences and vary
