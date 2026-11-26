@@ -48,6 +48,7 @@ FILE: <exact repo-relative path>
 <replacement lines>
 >>>>>>
 - SEARCH must occur in the target file byte-for-byte exactly once. Keep SEARCH minimal but unique (include enough surrounding context).
+- Multiple SEARCH/======/>>>>>> pairs allowed under one FILE: header (one pair per hunk); every pair is matched independently, all must match.
 - Minimal fix only.
 """
 ALLOW = {
@@ -309,23 +310,40 @@ def _parse_blocks(body):
         if nl < 0:
             return None
         path = p[:nl].strip().strip("`").strip()
+        if not path:
+            return None
         lines = p[nl + 1:].split("\n")
         while lines and lines[-1].strip() in ("```",):
             lines.pop()
-        if not lines or not _SEARCH_RE.match(lines[0]):
+        # MULTI-PAIR (M518): successive SEARCH/======/>>>>>> triples under one
+        # FILE: header all apply; a malformed triple voids the whole reply.
+        triples = []
+        i = 0
+        n = len(lines)
+        while True:
+            while i < n and not lines[i].strip():
+                i += 1
+            if i >= n:
+                break
+            if not _SEARCH_RE.match(lines[i]):
+                return None
+            try:
+                mi = next(j for j in range(i + 1, n) if _SEP_RE.match(lines[j]))
+                ei = next(j for j in range(mi + 1, n) if _END_RE.match(lines[j]))
+            except StopIteration:
+                return None
+            if mi <= i + 1 or ei <= mi + 1:
+                return None
+            search = "\n".join(lines[i + 1:mi])
+            repl = "\n".join(lines[mi + 1:ei])
+            if len(search.strip()) < 20:
+                return None
+            triples.append((search, repl))
+            i = ei + 1
+        if not triples:
             return None
-        try:
-            mi = next(i for i, ln in enumerate(lines) if _SEP_RE.match(ln))
-            ei = next(i for i, ln in enumerate(lines) if _END_RE.match(ln))
-        except StopIteration:
-            return None
-        if mi <= 1 or ei <= mi + 1:
-            return None
-        search = "\n".join(lines[1:mi])
-        repl = "\n".join(lines[mi + 1:ei])
-        if len(search.strip()) < 20 or not path:
-            return None
-        blocks.append((path, search, repl))
+        for (search, repl) in triples:
+            blocks.append((path, search, repl))
     return blocks or None
 
 async def ask(s, pid, prompt):
@@ -411,8 +429,21 @@ def harness(pid, reply, t):
         print("FETCH-FAIL " + pid + " " + str(e)[:200], flush=True)
         return "fetch-fail len=" + str(len(reply))
     sh("tar xzf " + work + "/src.tgz -C " + work + " --strip-components=1", timeout=120)
+    ensure_deps()
+    # SHADOW-GUARD (M518): src-layout repos (requests) are unimportable from the
+    # tarball root via pytest path insertion, so tests would silently run against
+    # site-packages instead of the patch. Force tarball-first via PYTHONPATH and
+    # PROVE it by resolving the module file before pytest.
+    mod = t["repo"].split("/")[1]
+    pyenv = "PYTHONPATH=" + work + ":" + work + "/src"
+    mrc, mout = sh("cd " + work + " && " + pyenv + " python -c \"import " + mod + "; print(" + mod + ".__file__)\" 2>&1 | tail -2", timeout=60)
+    print("MODFILE " + pid + " " + mod + " " + mout[-160:], flush=True)
+    if (work + "/") not in mout:
+        FAIL_TAILS[pid] = "shadow import: " + mod + " resolves outside work dir (" + mout[-160:] + ") — tarball code would NOT run; fix PYTHONPATH/install before trusting pytest"
+        return "shadow-fail " + mod
     applied = []
     origs = {}
+    n_bl = len(blocks)
     for (path, search, repl) in blocks:
         fp = work + "/" + path
         try:
@@ -442,13 +473,13 @@ def harness(pid, reply, t):
                         olines[pre:pre + nlines] = repl.split("\n")
                         new_content = "\n".join(olines)
             if new_content is None:
-                print("SEARCH-MISS " + pid + " " + path + " n=0", flush=True)
-                FAIL_TAILS[pid] = "SEARCH block not found verbatim in " + path + " — copy exact lines from the LOCALIZED CODE slice (byte-for-byte, no rewording)"
-                return "search-miss " + path
+                print("SEARCH-MISS " + pid + " " + path + " n=0 block " + str(len(applied) + 1) + "/" + str(n_bl), flush=True)
+                FAIL_TAILS[pid] = "SEARCH block " + str(len(applied) + 1) + "/" + str(n_bl) + " not found verbatim in " + path + " — copy exact lines from the LOCALIZED CODE slice (byte-for-byte, no rewording). NOTE: earlier blocks in this reply already applied to the file."
+                return "search-miss " + path + " applied " + str(len(applied)) + "/" + str(n_bl)
         else:
-            print("SEARCH-AMBIGUOUS " + pid + " " + path + " n=" + str(n), flush=True)
-            FAIL_TAILS[pid] = "SEARCH block matches " + str(n) + " places in " + path + " — extend SEARCH with more surrounding context lines until unique"
-            return "search-ambiguous " + path
+            print("SEARCH-AMBIGUOUS " + pid + " " + path + " n=" + str(n) + " block " + str(len(applied) + 1) + "/" + str(n_bl), flush=True)
+            FAIL_TAILS[pid] = "SEARCH block " + str(len(applied) + 1) + "/" + str(n_bl) + " matches " + str(n) + " places in " + path + " — extend SEARCH with more surrounding context lines until unique"
+            return "search-ambiguous " + path + " applied " + str(len(applied)) + "/" + str(n_bl)
         origs[path] = content
         open(fp, "w").write(new_content)
         applied.append(path)
@@ -463,21 +494,22 @@ def harness(pid, reply, t):
         open(OUT_DIR + "/" + pid + ".diff", "w").write("\n".join(dl) + "\n" if dl else "")
     except Exception as e:
         print("DIFF-FAIL " + pid + " " + str(e)[:160], flush=True)
-    rc, out = sh("cd " + work + " && python -m py_compile " + " ".join(applied) + " 2>&1; echo COMPILE_RC=$?", timeout=60)
+    rc, out = sh("cd " + work + " && python -m py_compile " + " ".join(sorted(set(applied))) + " 2>&1; echo COMPILE_RC=$?", timeout=60)
     print("COMPILE " + pid + " rc=" + str(rc) + " " + out[-200:], flush=True)
     open(work + "/test_patch.diff", "w").write(t["test_patch"] if t["test_patch"].endswith("\n") else t["test_patch"] + "\n")
     sh("cd " + work + " && git apply test_patch.diff 2>&1 | head -5; echo TEST_APPLIED_RC=$?", timeout=60)
     ensure_deps()
     tf = PYTESTS.get(pid, "")
-    trc, tout = sh("cd " + work + " && python -m pytest " + tf + " -q -W ignore::PendingDeprecationWarning -W ignore::DeprecationWarning -p no:cacheprovider > pytest_out.txt 2>&1; echo PYTEST_RC=$?; tail -15 pytest_out.txt", timeout=300)
+    trc, tout = sh("cd " + work + " && " + pyenv + " python -m pytest " + tf + " -q -W ignore::PendingDeprecationWarning -W ignore::DeprecationWarning -p no:cacheprovider > pytest_out.txt 2>&1; echo PYTEST_RC=$?; tail -15 pytest_out.txt", timeout=300)
     sh("cp " + work + "/pytest_out.txt " + OUT_DIR + "/" + pid + ".pytest.txt", timeout=30)
     import re as _re
     _m = _re.search(r"PYTEST_RC=(\d+)", tout)
     _ptr = _m.group(1) if _m else "?"
     print("TEST-RESULT " + pid + " rc=" + str(trc) + " pytest_rc=" + _ptr + " " + tout[-800:], flush=True)
     if str(_ptr) != "0":
-        FAIL_TAILS[pid] = "pytest failed (pytest_rc=" + str(_ptr) + "):\n" + tout[-1500:]
-    return "collected len=" + str(len(reply)) + " testrc=" + _ptr
+        FAIL_TAILS[pid] = "pytest failed (pytest_rc=" + str(_ptr) + " blocks " + str(len(applied)) + "/" + str(n_bl) + "):\n" + tout[-1500:]
+    print("APPLIED " + pid + " " + str(len(applied)) + "/" + str(n_bl) + " blocks", flush=True)
+    return "collected len=" + str(len(reply)) + " testrc=" + _ptr + " blocks=" + str(len(applied)) + "/" + str(n_bl)
 
 async def main():
     s = DuckAISession(model="tinfoil/gemma4-31b", timeout=240.0)
