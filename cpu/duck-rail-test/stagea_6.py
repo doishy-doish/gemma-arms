@@ -6,181 +6,61 @@ import asyncio, os, sys, subprocess, tarfile, threading, urllib.request
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from duckapi_duckai import DuckAISession
 
-PROMPTS = {
-    """fastapi_14786""": """You are an expert Python engineer. Minimal fix only.
-
-ISSUE (fastapi_14786 in fastapi/fastapi at eacbce24c9d2):
-🐛 Strip whitespaces from `Authorization` header credentials
-
-## Description
-
-Fixes whitespace handling in authorization header parameter extraction to comply with [RFC 6750](https://datatracker.ietf.org/doc/html/rfc6750#section-2.1).
-
-## Problem
-
-The current implementation preserves leading/trailing whitespace in the extracted credential parameter. While RFC 6750 allows one or more spaces (`1*SP`) between "Bearer" and the token, the token definition (`b64token`) doesn't include whitespace characters, meaning spaces should be treated as separators only.
-
-This causes the extracted credentials to include extraneous whitespace, which can lead to authentication failures.
-
-## Solution
-
-Added `.strip()` to the parameter extraction to remove leading and trailing whitespace:
-```python
-return scheme, param.strip()
-```
-
-## Reproduction
-
-### Before the fix:
-```python
-from typing import Annotated
-from fastapi import Depends, FastAPI
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-
-app = FastAPI()
-security = HTTPBearer()
-
-@app.get("/users/me")
-def read_current_user(
-    credentials: Annotated[HTTPAuthorizationCredentials, Depends(security)]
-):
-    return {"scheme": credentials.scheme, "credentials": credentials.credentials}
-```
-
-**Test case 1: Single space (correct)**
-```bash
-curl -X 'GET' \\
-  'http://127.0.0.1:8000/users/me' \\
-  -H 'Authorization: Bearer xxx'
-```
-Response: `{"scheme":"Bearer","credentials":"xxx"}` ✓
-
-**Test case 2: Multiple spaces**
-```bash
-curl -X 'GET' \\
-  'http://127.0.0.1:8000/users/me' \\
-  -H 'Authorization: Bearer   xxx'
-```
-Response: `{"scheme":"Bearer","credentials":"  xxx"}` ✗
-
-**Test case 3: Trailing whitespace**
-```bash
-curl -X 'GET' \\
-  'http://127.0.0.1:8000/users/me' \\
-  -H 'Authorization: Bearer xxx '
-```
-Response: `{"scheme":"Bearer","credentials":"xxx "}` ✗
-
-### After the fix:
-
-All three test cases now return: `{"scheme":"Bearer","credentials":"xxx"}` ✓
-
-## Changes
-
-- Modified `get_authorization_scheme_param()` in `fastapi/security/utils.py` to strip whitespace from the parameter
-- Added test cases to verify the fix handles multiple spaces and trailing whitespace correctly
-
-## Checklist
-
-- [x] Tests added to cover the bug fix
-- [x] Existing tests pass
-
-TASK: Reply with a single unified diff (git apply compatible, with --- a/ +++ b/ headers) that fixes the issue. No prose, no markdown fences, diff only.
-""",
-    """fastapi_13537""": """You are an expert Python engineer. Minimal fix only.
-
-ISSUE (fastapi_13537 in fastapi/fastapi at 3b4b5ab8c819):
-🐛 Fix support for form values with empty strings interpreted as missing (`None` if that's the default), for compatibility with HTML forms
-
-There was a bug in the validation of form data for optional params with None default value. This is a regression that was introduced by https://github.com/fastapi/fastapi/pull/12134.
-
-## Explaination:
-The `_get_multidict_value` uses `None` to represent both the absence a value in the dict, and a default value of `None` for that field. When the values are collected in `_extract_form_body`, they are only added to the values if they are not `None`. Later (#12134), some code was added that attempted to complement the model values with values not explicitely in the model, if values for those fields were not already processed earlier. The issue is that since we didn't add values to the initial value dict if they were none, we attempted to add them again in that second iteration. This generally wasn't an issue, except for the fast that a form field set to the empty string (`""`) is interpreted as the absence of that field. This resulted in `_get_multidict_value` picking the default value, that would happen to be `None`, so it wasn't added to the values dict in the first iteration. In the second iteration, we would find that value in the request params again, but set to `""`, and add that to the initial value dict. Later, validation would choke on that empty string.
-
-The fix is to keep track of already visited field, rather that relying on the content of the values dict to complement the missing field. Such thing was already done in `request_params_to_args` for example.
-
-
-closes #13533 
-
-TASK: Reply with a single unified diff (git apply compatible, with --- a/ +++ b/ headers) that fixes the issue. No prose, no markdown fences, diff only.
-""",
-    """requests_7427""": """You are an expert Python engineer. Minimal fix only.
-
-ISSUE (requests_7427 in psf/requests at b684dcb9bbf3):
-Port bpo-39057 to Requests
-
-This PR ports a [fix](https://bugs.python.org/issue39057) from CPython to constrain no_proxy behavior to domain boundaries. This was originally undefined behavior when Requests implemented `no_proxy` support but has since had bug fixes released in both CPython and Curl. We'll follow suit to conform with ecosystem expectations and resolve long standing issue #4795.
-
-TASK: Reply with a single unified diff (git apply compatible, with --- a/ +++ b/ headers) that fixes the issue. No prose, no markdown fences, diff only.
-""",
-    """fastapi_15589""": """You are an expert Python engineer. Minimal fix only.
-
-ISSUE (fastapi_15589 in fastapi/fastapi at 22b02e26f9e8):
-♻️ Do not accept underscore headers when using `convert_underscores=True` (the default)
-
-## Pull Request
-
-<!--
-Please start with a GitHub Discussion.
-
-Once a team member asks you to open a PR, create it and link the discussion here.
-
-Obvious typo fixes can be made in a PR without starting a discussion.
--->
-
-Discussion: <!-- Link to the GitHub Discussion -->
-
-## Description
-
-♻️ Do not accept underscore headers when using `convert_underscores=True` (the default)
-
-This means it would only accept header names separated with hyphens by default, and to accept header names separated with underscores, an app would need to explicitly set `convert_underscores=False`.
-
-<!-- Write the description of your PR here -->
-
-## AI Disclaimer
-
-<!-- If using AI, write here the prompt and model used -->
-
-<details>
-<summary>AI transcript</summary>
-
-<!-- Paste here the entire AI transcript -->
-
-</details>
-
-## Checklist
-
-- [ ] This PR is an obvious typo fix, or it links to a GitHub Discussion for the proposed code change.
-- [ ] I added tests for the change.
-- [ ] The new or updated tests fail on the main branch and pass on this PR.
-- [ ] Coverage stays at 100%.
-- [ ] The documentation explains the change if needed.
-
-
-TASK: Reply with a single unified diff (git apply compatible, with --- a/ +++ b/ headers) that fixes the issue. No prose, no markdown fences, diff only.
-""",
-    """fastapi_13920""": """You are an expert Python engineer. Minimal fix only.
-
-ISSUE (fastapi_13920 in fastapi/fastapi at 0dd42b746e17):
-✨ Add support for PEP695 `TypeAliasType`
-
-This is a continuation of #11140 with the comment by @Viicos fixed by vendoring a copy of `is_typealiastype` from [`typing-inspection`](https://github.com/pydantic/typing-inspection).
-
-TASK: Reply with a single unified diff (git apply compatible, with --- a/ +++ b/ headers) that fixes the issue. No prose, no markdown fences, diff only.
-""",
-    """fastapi_14258""": """You are an expert Python engineer. Minimal fix only.
-
-ISSUE (fastapi_14258 in fastapi/fastapi at e94028ab60d1):
-✨ Show a clear error on attempt to include router into itself
-
-Previously discussed in https://github.com/fastapi/fastapi/discussions/11424 with the PR at https://github.com/fastapi/fastapi/pull/11425
-
-Since I made modifications in the fork of the repo, the PR was automatically closed. This PR serves to add the circular reference check again. Discussed again in https://github.com/fastapi/fastapi/discussions/14251
-
-TASK: Reply with a single unified diff (git apply compatible, with --- a/ +++ b/ headers) that fixes the issue. No prose, no markdown fences, diff only.
-""",
+SLICES = {
+    """fastapi_14786""": "from typing import Optional\n\n\ndef get_authorization_scheme_param(\n    authorization_header_value: Optional[str],\n) -> tuple[str, str]:\n    if not authorization_header_value:\n        return \"\", \"\"\n    scheme, _, param = authorization_header_value.partition(\" \")\n    return scheme, param\n",
+    """fastapi_13537""": "def request_params_to_args(\n    fields: Sequence[ModelField],\n    received_params: Union[Mapping[str, Any], QueryParams, Headers],\n) -> Tuple[Dict[str, Any], List[Any]]:\n    values: Dict[str, Any] = {}\n    errors: List[Dict[str, Any]] = []\n\n    if not fields:\n        return values, errors\n\n    first_field = fields[0]\n    fields_to_extract = fields\n    single_not_embedded_field = False\n    default_convert_underscores = True\n    if len(fields) == 1 and lenient_issubclass(first_field.type_, BaseModel):\n        fields_to_extract = get_cached_model_fields(first_field.type_)\n        single_not_embedded_field = True\n        # If headers are in a Pydantic model, the way to disable convert_underscores\n        # would be with Header(convert_underscores=False) at the Pydantic model level\n        default_convert_underscores = getattr(\n            first_field.field_info, \"convert_underscores\", True\n        )\n\n    params_to_process: Dict[str, Any] = {}\n\n    processed_keys = set()\n\n    for field in fields_to_extract:\n        alias = None\n        if isinstance(received_params, Headers):\n            # Handle fields extracted from a Pydantic Model for a header, each field\n            # doesn't have a FieldInfo of type Header with the default convert_underscores=True\n            convert_underscores = getattr(\n                field.field_info, \"convert_underscores\", default_convert_underscores\n            )\n            if convert_underscores:\n                alias = (\n                    field.alias\n                    if field.alias != field.name\n                    else field.name.replace(\"_\", \"-\")\n                )\n        value = _get_multidict_value(field, received_params, alias=alias)\n        if value is not None:\n            params_to_process[field.name] = value\n        processed_keys.add(alias or field.alias)\n        processed_keys.add(field.name)\n\n    for key, value in received_params.items():\n        if key not in processed_keys:\n            params_to_process[key] = value\n\n    if single_not_embedded_field:\n        field_info = first_field.field_info\n        assert isinstance(field_info, (params.Param, temp_pydantic_v1_params.Param)), (\n            \"Params must be subclasses of Param\"\n        )\n        loc: Tuple[str, ...] = (field_info.in_.value,)\n        v_, errors_ = _validate_value_with_model_field(\n            field=first_field, value=params_to_process, values=values, loc=loc\n        )\n        return {first_field.name: v_}, errors_\n\n    for field in fields:\n        value = _get_multidict_value(field, received_params)\n        field_info = field.field_info\n        assert isinstance(field_info, (params.Param, temp_pydantic_v1_params.Param)), (\n            \"Params must be subclasses of Param\"\n        )\n        loc = (field_info.in_.value, field.alias)\n        v_, errors_ = _validate_value_with_model_field(\n            field=field, value=value, values=values, loc=loc\n        )\n        if errors_:\n            errors.extend(errors_)\n        else:\n            values[field.name] = v_\n    return values, errors\n\n\ndef is_union_of_base_models(field_type: Any) -> bool:\n    \"\"\"Check if field type is a Union where all members are BaseModel subclasses.\"\"\"\n    from fastapi.types import UnionType\n\n    origin = get_origin(field_type)\n\n    # Check if it's a Union type (covers both typing.Union and types.UnionType in Python 3.10+)\n    if origin is not Union and origin is not UnionType:\n        return False\n\n    union_args = get_args(field_type)\n\n    for arg in union_args:\n        if not _is_model_class(arg):\n            return False\n\n    return True\n\n\ndef _should_embed_body_fields(fields: List[ModelField]) -> bool:\n    if not fields:\n        return False\n    # More than one dependency could have the same field, it would show up as multiple\n    # fields but it's the same one, so count them by name\n    body_param_names_set = {field.name for field in fields}\n    # A top level field has to be a single field, not multiple\n    if len(body_param_names_set) > 1:\n        return True\n    first_field = fields[0]\n    # If it explicitly specifies it is embedded, it has to be embedded\n    if getattr(first_field.field_info, \"embed\", None):\n        return True\n    # If it's a Form (or File) field, it has to be a BaseModel (or a union of BaseModels) to be top level\n    # otherwise it has to be embedded, so that the key value pair can be extracted\n    if (\n        isinstance(first_field.field_info, (params.Form, temp_pydantic_v1_params.Form))\n        and not _is_model_class(first_field.type_)\n        and not is_union_of_base_models(first_field.type_)\n    ):\n        return True\n    return False\n\n\nasync def _extract_form_body(\n    body_fields: List[ModelField],\n    received_body: FormData,\n) -> Dict[str, Any]:\n    values = {}\n\n    for field in body_fields:\n        value = _get_multidict_value(field, received_body)\n        field_info = field.field_info\n        if (\n            isinstance(field_info, (params.File, temp_pydantic_v1_params.File))\n            and is_bytes_field(field)\n            and isinstance(value, UploadFile)\n        ):\n            value = await value.read()\n        elif (\n            is_bytes_sequence_field(field)\n            and isinstance(field_info, (params.File, temp_pydantic_v1_params.File))\n            and value_is_sequence(value)\n        ):\n            # For types\n            assert isinstance(value, sequence_types)  # type: ignore[arg-type]\n            results: List[Union[bytes, str]] = []\n\n            async def process_fn(\n                fn: Callable[[], Coroutine[Any, Any, Any]],\n            ) -> None:\n                result = await fn()\n                results.append(result)  # noqa: B023\n\n            async with anyio.create_task_group() as tg:\n                for sub_value in value:\n                    tg.start_soon(process_fn, sub_value.read)\n            value = serialize_sequence_value(field=field, value=results)\n        if value is not None:\n            values[field.alias] = value\n    for key, value in received_body.items():\n        if key not in values:\n            values[key] = value\n    return values\n\n\nasync def request_body_to_args(\n",
+    """requests_7427""": "def should_bypass_proxies(url: str, no_proxy: str | None) -> bool:\n    \"\"\"\n    Returns whether we should bypass proxies or not.\n\n    :rtype: bool\n    \"\"\"\n\n    # Prioritize lowercase environment variables over uppercase\n    # to keep a consistent behaviour with other http projects (curl, wget).\n    def get_proxy(key: str) -> str | None:\n        return os.environ.get(key) or os.environ.get(key.upper())\n\n    # First check whether no_proxy is defined. If it is, check that the URL\n    # we're getting isn't in the no_proxy list.\n    no_proxy_arg = no_proxy\n    if no_proxy is None:\n        no_proxy = get_proxy(\"no_proxy\")\n    parsed = urlparse(url)\n    hostname = parsed.hostname\n\n    if hostname is None:\n        # URLs don't always have hostnames, e.g. file:/// urls.\n        return True\n\n    if no_proxy:\n        # We need to check whether we match here. We need to see if we match\n        # the end of the hostname, both with and without the port.\n        no_proxy_hosts = (host for host in no_proxy.replace(\" \", \"\").split(\",\") if host)\n\n        if is_ipv4_address(hostname):\n            for proxy_ip in no_proxy_hosts:\n                if is_valid_cidr(proxy_ip):\n                    if address_in_network(hostname, proxy_ip):\n                        return True\n                elif hostname == proxy_ip:\n                    # If no_proxy ip was defined in plain IP notation instead of cidr notation &\n                    # matches the IP of the index\n                    return True\n        else:\n            host_with_port = hostname\n            if parsed.port:\n                host_with_port += f\":{parsed.port}\"\n\n            for host in no_proxy_hosts:\n                if hostname.endswith(host) or host_with_port.endswith(host):\n                    # The URL does match something in no_proxy, so we don't want\n                    # to apply the proxies on this URL.\n                    return True\n\n    with set_environ(\"no_proxy\", no_proxy_arg):\n        try:\n            bypass = proxy_bypass(hostname)\n        except (TypeError, socket.gaierror):\n            bypass = False\n\n    if bypass:\n        return True\n\n    return False\n\n\ndef get_environ_proxies(url: str, no_proxy: str | None = None) -> dict[str, str]:\n",
+    """fastapi_15589""": "def request_params_to_args(\n    fields: Sequence[ModelField],\n    received_params: Mapping[str, Any] | QueryParams | Headers,\n) -> tuple[dict[str, Any], list[Any]]:\n    values: dict[str, Any] = {}\n    errors: list[dict[str, Any]] = []\n\n    if not fields:\n        return values, errors\n\n    first_field = fields[0]\n    fields_to_extract = fields\n    single_not_embedded_field = False\n    default_convert_underscores = True\n    if len(fields) == 1 and lenient_issubclass(\n        first_field.field_info.annotation, BaseModel\n    ):\n        fields_to_extract = get_cached_model_fields(first_field.field_info.annotation)\n        single_not_embedded_field = True\n        # If headers are in a Pydantic model, the way to disable convert_underscores\n        # would be with Header(convert_underscores=False) at the Pydantic model level\n        default_convert_underscores = getattr(\n            first_field.field_info, \"convert_underscores\", True\n        )\n\n    params_to_process: dict[str, Any] = {}\n\n    processed_keys = set()\n\n    for field in fields_to_extract:\n        alias = None\n        if isinstance(received_params, Headers):\n            # Handle fields extracted from a Pydantic Model for a header, each field\n            # doesn't have a FieldInfo of type Header with the default convert_underscores=True\n            convert_underscores = getattr(\n                field.field_info, \"convert_underscores\", default_convert_underscores\n            )\n            if convert_underscores:\n                alias = get_validation_alias(field)\n                if alias == field.name:\n                    alias = alias.replace(\"_\", \"-\")\n        value = _get_multidict_value(field, received_params, alias=alias)\n        if value is not None:\n            params_to_process[get_validation_alias(field)] = value\n        processed_keys.add(alias or get_validation_alias(field))\n\n    for key in received_params.keys():\n        if key not in processed_keys:\n            if isinstance(received_params, (ImmutableMultiDict, Headers)):\n                value = received_params.getlist(key)\n                if isinstance(value, list) and (len(value) == 1):\n                    params_to_process[key] = value[0]\n                else:\n                    params_to_process[key] = value\n            else:\n                params_to_process[key] = received_params.get(key)\n\n    if single_not_embedded_field:\n        field_info = first_field.field_info\n        assert isinstance(field_info, params.Param), (\n            \"Params must be subclasses of Param\"\n        )\n        loc: tuple[str, ...] = (field_info.in_.value,)\n        v_, errors_ = _validate_value_with_model_field(\n            field=first_field, value=params_to_process, values=values, loc=loc\n        )\n        return {first_field.name: v_}, errors_\n\n    for field in fields:\n        value = _get_multidict_value(field, received_params)\n        field_info = field.field_info\n        assert isinstance(field_info, params.Param), (\n            \"Params must be subclasses of Param\"\n        )\n        loc = (field_info.in_.value, get_validation_alias(field))\n        v_, errors_ = _validate_value_with_model_field(\n            field=field, value=value, values=values, loc=loc\n        )\n        if errors_:\n            errors.extend(errors_)\n        else:\n            values[field.name] = v_\n    return values, errors\n\n\ndef is_union_of_base_models(field_type: Any) -> bool:\n",
+    """fastapi_13920""": "def get_dependant(\n    *,\n    path: str,\n    call: Callable[..., Any],\n    name: Optional[str] = None,\n    own_oauth_scopes: Optional[list[str]] = None,\n    parent_oauth_scopes: Optional[list[str]] = None,\n    use_cache: bool = True,\n    scope: Union[Literal[\"function\", \"request\"], None] = None,\n) -> Dependant:\n    dependant = Dependant(\n        call=call,\n        name=name,\n        path=path,\n        use_cache=use_cache,\n        scope=scope,\n        own_oauth_scopes=own_oauth_scopes,\n        parent_oauth_scopes=parent_oauth_scopes,\n    )\n    current_scopes = (parent_oauth_scopes or []) + (own_oauth_scopes or [])\n    path_param_names = get_path_param_names(path)\n    endpoint_signature = get_typed_signature(call)\n    signature_params = endpoint_signature.parameters\n    for param_name, param in signature_params.items():\n        is_path_param = param_name in path_param_names\n        param_details = analyze_param(\n            param_name=param_name,\n            annotation=param.annotation,\n            value=param.default,\n            is_path_param=is_path_param,\n        )\n        if param_details.depends is not None:\n            assert param_details.depends.dependency\n            if (\n                (dependant.is_gen_callable or dependant.is_async_gen_callable)\n                and dependant.computed_scope == \"request\"\n                and param_details.depends.scope == \"function\"\n            ):\n                assert dependant.call\n                raise DependencyScopeError(\n                    f'The dependency \"{dependant.call.__name__}\" has a scope of '\n                    '\"request\", it cannot depend on dependencies with scope \"function\".'\n                )\n            sub_own_oauth_scopes: list[str] = []\n            if isinstance(param_details.depends, params.Security):\n                if param_details.depends.scopes:\n                    sub_own_oauth_scopes = list(param_details.depends.scopes)\n            sub_dependant = get_dependant(\n                path=path,\n                call=param_details.depends.dependency,\n                name=param_name,\n                own_oauth_scopes=sub_own_oauth_scopes,\n                parent_oauth_scopes=current_scopes,\n                use_cache=param_details.depends.use_cache,\n                scope=param_details.depends.scope,\n            )\n            dependant.dependencies.append(sub_dependant)\n            continue\n        if add_non_field_param_to_dependency(\n            param_name=param_name,\n            type_annotation=param_details.type_annotation,\n            dependant=dependant,\n        ):\n            assert param_details.field is None, (\n                f\"Cannot specify multiple FastAPI annotations for {param_name!r}\"\n            )\n            continue\n        assert param_details.field is not None\n        if isinstance(param_details.field.field_info, params.Body):\n            dependant.body_params.append(param_details.field)\n        else:\n            add_param_to_fields(field=param_details.field, dependant=dependant)\n    return dependant\n\n\ndef add_non_field_param_to_dependency(\n",
+    """fastapi_14258""": "    ) -> None:\n        \"\"\"\n        Include another `APIRouter` in the same current `APIRouter`.\n\n        Read more about it in the\n        [FastAPI docs for Bigger Applications](https://fastapi.tiangolo.com/tutorial/bigger-applications/).\n\n        ## Example\n\n        ```python\n        from fastapi import APIRouter, FastAPI\n\n        app = FastAPI()\n        internal_router = APIRouter()\n        users_router = APIRouter()\n\n        @users_router.get(\"/users/\")\n        def read_users():\n            return [{\"name\": \"Rick\"}, {\"name\": \"Morty\"}]\n\n        internal_router.include_router(users_router)\n        app.include_router(internal_router)\n        ```\n        \"\"\"\n        if prefix:\n            assert prefix.startswith(\"/\"), \"A path prefix must start with '/'\"\n            assert not prefix.endswith(\"/\"), (\n                \"A path prefix must not end with '/', as the routes will start with '/'\"\n            )\n        else:\n            for r in router.routes:\n                path = getattr(r, \"path\")  # noqa: B009\n                name = getattr(r, \"name\", \"unknown\")\n                if path is not None and not path:\n                    raise FastAPIError(\n                        f\"Prefix and path cannot be both empty (path operation: {name})\"\n                    )\n        if responses is None:\n            responses = {}\n        for route in router.routes:\n            if isinstance(route, APIRoute):\n                combined_responses = {**responses, **route.responses}\n                use_response_class = get_value_or_default(\n                    route.response_class,\n                    router.default_response_class,\n                    default_response_class,\n                    self.default_response_class,\n                )\n                current_tags = []\n                if tags:\n                    current_tags.extend(tags)\n                if route.tags:\n                    current_tags.extend(route.tags)\n                current_dependencies: list[params.Depends] = []\n                if dependencies:\n                    current_dependencies.extend(dependencies)\n                if route.dependencies:\n                    current_dependencies.extend(route.dependencies)\n                current_callbacks = []\n                if callbacks:\n                    current_callbacks.extend(callbacks)\n                if route.callbacks:\n                    current_callbacks.extend(route.callbacks)\n                current_generate_unique_id = get_value_or_default(\n                    route.generate_unique_id_function,\n                    router.generate_unique_id_function,\n                    generate_unique_id_function,\n                    self.generate_unique_id_function,\n                )\n                self.add_api_route(\n                    prefix + route.path,\n                    route.endpoint,\n                    response_model=route.response_model,\n                    status_code=route.status_code,\n                    tags=current_tags,\n",
 }
+ISSUES = {
+    """fastapi_14786""": """ISSUE (fastapi_14786 in fastapi/fastapi at eacbce24c9d2):
+Strip whitespaces from `Authorization` header credentials (RFC 6750 section 2.1).
+Problem: get_authorization_scheme_param preserves leading/trailing whitespace in the credential, so `Authorization: Bearer   xxx` yields credentials `"  xxx"`.
+Fix: return scheme, param.strip().
+Tests: `Other  foobar ` -> ("Other", "foobar"); `Bearer  testtoken ` -> ("Bearer", "testtoken").""",
+    """fastapi_13537""": """ISSUE (fastapi_13537 in fastapi/fastapi at 3b4b5ab8c819):
+Form values with empty strings must be treated as missing (None default), for HTML-form compatibility. Regression from PR #12134.
+Spec: `_get_multidict_value` uses None for both absent values and None defaults. `_extract_form_body` skips None values; a later pass re-adds missing fields from request params, but a form field set to "" is seen as absent, `_get_multidict_value` returns the None default (skipped in pass 1), then pass 2 finds "" in the params and adds it, and validation chokes on "".
+Fix: track already-visited fields instead of relying on the values dict (as `request_params_to_args` already does). Keep the extra-key fix. Correct file only.
+closes #13533""",
+    """requests_7427""": """ISSUE (requests_7427 in psf/requests at b684dcb9bbf3):
+Port CPython bpo-39057: constrain no_proxy to domain boundaries (no greedy endswith matches). Long-standing issue #4795.
+Behavior with no_proxy="localhost, anotherdomain.com, newdomain.com:1234, .d.o.t": bypass for http://localhost/, http://anotherdomain.com:8888/, http://newdomain.com:1234/, http://www.newdomain.com:1234/ (subdomain of a port entry), http://foo.d.o.t/, http://d.o.t/; NO bypass for http://prelocalhost/, http://newdomain.com/, http://newdomain.com:1235/.""",
+    """fastapi_15589""": """ISSUE (fastapi_15589 in fastapi/fastapi at 22b02e26f9e8):
+With convert_underscores=True (the default), underscore headers must NOT be accepted: only hyphen-separated header names validate; apps opt into underscores via convert_underscores=False.
+Behavior: GET /header-requires-hyphen with both x-user-id=hyphenated-value AND x_user_id=underscore-value -> 200 {"x_user_id": "hyphenated-value"} (hyphen wins); with only x_user_id=underscore-value -> 422 with detail loc ["header", "x_user_id"].
+Non-empty real fix required.""",
+    """fastapi_13920""": """ISSUE (fastapi_13920 in fastapi/fastapi at 0dd42b746e17):
+Add PEP 695 TypeAliasType support (continuation of #11140): Depends() inside Annotated inside a TypeAliasType must resolve, e.g. DependedValue = TypeAliasType("DependedValue", Annotated[int, Depends(some_value)], type_params=()) then def f(value: DependedValue) must inject 123. Vendor a copy of is_typealiastype from typing-inspection (do not add a dependency).""",
+    """fastapi_14258""": """ISSUE (fastapi_14258 in fastapi/fastapi at e94028ab60d1):
+Show a clear error on attempt to include a router into itself: router.include_router(router) must raise AssertionError with the EXACT message: Cannot include the same APIRouter instance into itself. Did you mean to include a different router?
+(The test uses match= on this exact string.)""",
+}
+CONTRACT = """OUTPUT CONTRACT (follow exactly):
+- Output edit blocks only: no prose, no fences, no explanation.
+- Each block has exactly this shape:
+FILE: <exact repo-relative path>
+<<<<<< SEARCH
+<exact verbatim lines copied from LOCALIZED CODE>
+======
+<replacement lines>
+>>>>>>
+- SEARCH must occur in the target file byte-for-byte exactly once. Keep SEARCH minimal but unique (include enough surrounding context).
+- Minimal fix only.
+"""
+ALLOW = {
+    """fastapi_14786""": ["""fastapi/security/utils.py"""],
+    """fastapi_13537""": ["""fastapi/dependencies/utils.py"""],
+    """requests_7427""": ["""src/requests/utils.py"""],
+    """fastapi_15589""": ["""fastapi/dependencies/utils.py"""],
+    """fastapi_13920""": ["""fastapi/dependencies/utils.py"""],
+    """fastapi_14258""": ["""fastapi/routing.py"""],
+}
+PROMPTS = {}
+for _pid in ISSUES:
+    PROMPTS[_pid] = "You are an expert Python engineer. Minimal fix only.\n\n" + ISSUES[_pid] + "\n\nLOCALIZED CODE (verbatim from the base commit; SEARCH blocks must be copied from here byte-for-byte):\n" + SLICES[_pid] + "\n" + CONTRACT
 TASKS = {
     """fastapi_14786""": {"repo": """fastapi/fastapi""", "base": """eacbce24c9d299c6a28110d9fc8ac50f53cddb08""", "test_patch": """--- a/tests/test_security_http_base.py
 +++ b/tests/test_security_http_base.py
@@ -411,22 +291,47 @@ ORACLES = {
     "fastapi_15589": "ORACLE: non-empty diff required; empty output = FAIL.",
     "requests_7427": "ORACLE: after split comma STRIP each entry; bare dot matches all; port entries: netloc == x or netloc endswith dot+x (subdomain+port); others: lstrip dot then hostname == x or endswith dot+x.",
 }
-TERSE_LOCK = "STRICT TERSE CODE-ONLY. Output one unified diff only (git apply compatible, --- a/ +++ b/ headers). No prose, no fences, no explanation, no analysis. COMPLETENESS OVER BREVITY on edge cases (ports, dot-boundary, host_with_port). Empty output is FAIL: never return zero hunks.\n\n"
-def _valid_diff(body):
-    return "--- a/" in body and "+++ b/" in body and len(body.strip()) > 50
+def _parse_blocks(body):
+    blocks = []
+    parts = body.split("FILE:")
+    if len(parts) < 2:
+        return None
+    for p in parts[1:]:
+        nl = p.find("\n")
+        if nl < 0:
+            return None
+        path = p[:nl].strip()
+        lines = p[nl + 1:].split("\n")
+        if not lines or lines[0].strip() != "<<<<<< SEARCH":
+            return None
+        try:
+            mi = lines.index("======")
+            ei = lines.index(">>>>>>")
+        except ValueError:
+            return None
+        if mi <= 1 or ei <= mi + 1:
+            return None
+        search = "\n".join(lines[1:mi])
+        repl = "\n".join(lines[mi + 1:ei])
+        if len(search.strip()) < 20 or not path:
+            return None
+        blocks.append((path, search, repl))
+    return blocks or None
+
 async def ask(s, pid, prompt):
-    full = TERSE_LOCK + FILE_HINTS.get(pid, "") + " " + EDGE_HINTS.get(pid, "") + " " + ORACLES.get(pid, "") + "\n\n" + prompt
+    full = CONTRACT + FILE_HINTS.get(pid, "") + " " + EDGE_HINTS.get(pid, "") + " " + ORACLES.get(pid, "") + "\n\n" + prompt
     last = ""
     for attempt in range(3):
-        q = full if attempt == 0 else "INVALID prior output (empty/wrong-file/unappliable). Resubmit diff ONLY, correct file, --- a/ +++ b/ headers.\n\n" + full
+        q = full if attempt == 0 else "INVALID prior output (unparseable block, wrong FILE, or ambiguous SEARCH). Resubmit BLOCKS ONLY, correct FILE, SEARCH copied verbatim from LOCALIZED CODE.\n\n" + full
         reply = await s.send(q, rewrite=REWRITE_LOW_TERSE)
         last = reply
         b = reply.strip()
-        if b.startswith("\u0060\u0060\u0060"):
+        if b.startswith("```"):
             ls = b.split("\n")
-            b = "\n".join(ls[1:-1] if ls[-1].strip().startswith("\u0060\u0060\u0060") else ls[1:])
-        if _valid_diff(b):
-            return reply.replace("\u0060\u0060\u0060", "")
+            b = "\n".join(ls[1:-1] if ls[-1].strip().startswith("```") else ls[1:])
+        bl = _parse_blocks(b)
+        if bl and all(p in ALLOW.get(pid, []) for (p, _s, _r) in bl):
+            return reply.replace("```", "")
         print("RETRY " + pid + " attempt=" + str(attempt + 1) + " len=" + str(len(reply)), flush=True)
     return last
 
@@ -455,14 +360,20 @@ def sh(cmd, **kw):
 
 def harness(pid, reply, t):
     body = reply.strip()
-    if body.startswith("\u0060\u0060\u0060"):
+    if body.startswith("```"):
         ls = body.split("\n")
-        body = "\n".join(ls[1:-1] if ls[-1].strip().startswith("\u0060\u0060\u0060") else ls[1:])
-    if len(body) < 50 or "--- a/" not in body:
+        body = "\n".join(ls[1:-1] if ls[-1].strip().startswith("```") else ls[1:])
+    blocks = _parse_blocks(body)
+    if not blocks:
         print("EMPTY-DIFF " + pid + " len=" + str(len(body)), flush=True)
         return "empty len=" + str(len(body))
-    diff_path = "/tmp/duck6_" + pid + ".diff"
-    open(diff_path, "w").write(body if body.endswith("\n") else body + "\n")
+    ok_paths = ALLOW.get(pid, [])
+    for (path, _s, _r) in blocks:
+        if path not in ok_paths:
+            print("WRONG-FILE " + pid + " " + path, flush=True)
+            return "wrong-file " + path
+    raw_path = "/tmp/duck6_" + pid + ".blocks"
+    open(raw_path, "w").write(body if body.endswith("\n") else body + "\n")
     work = "/tmp/duck6_" + pid
     sh("rm -rf " + work + " && mkdir -p " + work)
     url = "https://github.com/" + t["repo"] + "/archive/" + t["base"] + ".tar.gz"
@@ -473,16 +384,33 @@ def harness(pid, reply, t):
         print("FETCH-FAIL " + pid + " " + str(e)[:200], flush=True)
         return "fetch-fail len=" + str(len(reply))
     sh("tar xzf " + work + "/src.tgz -C " + work + " --strip-components=1", timeout=120)
-    rc, out = sh("cd " + work + " && git apply --check /tmp/duck6_" + pid + ".diff 2>&1 | head -5; echo APPLY_CHECK_RC=$?", timeout=60)
-    print("APPLY-CHECK " + pid + " rc=" + str(rc) + " " + out[-300:], flush=True)
-    sh("cd " + work + " && git apply /tmp/duck6_" + pid + ".diff 2>&1 | head -5; echo APPLIED_RC=$?", timeout=60)
+    applied = []
+    for (path, search, repl) in blocks:
+        fp = work + "/" + path
+        try:
+            content = open(fp).read()
+        except Exception:
+            print("READ-FAIL " + pid + " " + path, flush=True)
+            return "read-fail " + path
+        n = content.count(search)
+        if n != 1:
+            print("SEARCH-" + ("MISS" if n == 0 else "AMBIGUOUS") + " " + pid + " " + path + " n=" + str(n), flush=True)
+            return "search-" + ("miss" if n == 0 else "ambiguous") + " " + path
+        open(fp, "w").write(content.replace(search, repl, 1))
+        applied.append(path)
+    rc, out = sh("cd " + work + " && python -m py_compile " + " ".join(applied) + " 2>&1; echo COMPILE_RC=$?", timeout=60)
+    print("COMPILE " + pid + " rc=" + str(rc) + " " + out[-200:], flush=True)
     open(work + "/test_patch.diff", "w").write(t["test_patch"] if t["test_patch"].endswith("\n") else t["test_patch"] + "\n")
     sh("cd " + work + " && git apply test_patch.diff 2>&1 | head -5; echo TEST_APPLIED_RC=$?", timeout=60)
     ensure_deps()
     tf = PYTESTS.get(pid, "")
-    trc, tout = sh("cd " + work + " && python -m pytest " + tf + " -q 2>&1 | tail -15", timeout=300)
-    print("TEST-RESULT " + pid + " rc=" + str(trc) + " " + tout[-800:], flush=True)
-    return "collected len=" + str(len(reply)) + " testrc=" + str(trc)
+    trc, tout = sh("cd " + work + " && python -m pytest " + tf + " -q > pytest_out.txt 2>&1; echo PYTEST_RC=$?; tail -15 pytest_out.txt", timeout=300)
+    import re as _re
+    _m = _re.search(r"PYTEST_RC=(\d+)", tout)
+    _ptr = _m.group(1) if _m else "?"
+    print("TEST-RESULT " + pid + " rc=" + str(trc) + " pytest_rc=" + _ptr + " " + tout[-800:], flush=True)
+    return "collected len=" + str(len(reply)) + " testrc=" + _ptr
+
 async def main():
     s = DuckAISession(model="tinfoil/gemma4-31b", timeout=240.0)
     results = {}
