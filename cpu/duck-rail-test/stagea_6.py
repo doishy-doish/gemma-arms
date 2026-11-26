@@ -1,4 +1,4 @@
-"""Duck stage-A R-LOW (reasoning low + terse lock): same-6 clean-room, one turn each, then public-proxy score.
+"""Duck stage-A PERSONA (reasoning low + terse lock + ORACLES exactness): same-6 clean-room, one turn each, then public-proxy score.
 Model: tinfoil/gemma4-31b via browser rail (pure chat API, no harness in Duck).
 Harness (checkout/apply/pytest) lives HERE, not in the API.
 """
@@ -407,7 +407,7 @@ TERSE_LOCK = "STRICT TERSE CODE-ONLY. Output one unified diff only (git apply co
 def _valid_diff(body):
     return "--- a/" in body and "+++ b/" in body and len(body.strip()) > 50
 async def ask(s, pid, prompt):
-    full = TERSE_LOCK + FILE_HINTS.get(pid, "") + " " + EDGE_HINTS.get(pid, "") + "\n\n" + prompt
+    full = TERSE_LOCK + FILE_HINTS.get(pid, "") + " " + EDGE_HINTS.get(pid, "") + " " + ORACLES.get(pid, "") + "\n\n" + prompt
     last = ""
     for attempt in range(3):
         q = full if attempt == 0 else "INVALID prior output (empty/wrong-file/unappliable). Resubmit diff ONLY, correct file, --- a/ +++ b/ headers.\n\n" + full
