@@ -557,17 +557,38 @@ async def main():
             tail = FAIL_TAILS.get(pid, "")[-1500:]
             fb = ("HARNESS FEEDBACK on your prior BLOCKS for " + pid + ":\n" + tail
                   + "\nResubmit BLOCKS ONLY (same contract: FILE:/SEARCH/======/>>>>>>, SEARCH copied verbatim from LOCALIZED CODE). Minimal fix only.\n\n" + PROMPTS[pid])
-            try:
-                reply2 = await s.send(fb, rewrite=REWRITE_LOW_TERSE)
-            except Exception as e:
-                print("TURN2-FAIL " + pid + " " + str(e)[:200], flush=True)
+            reply2 = None
+            res2 = None
+            for t2a in range(3):
+                try:
+                    _r2 = await s.send(fb, rewrite=REWRITE_LOW_TERSE)
+                except Exception as e:
+                    print("TURN2-FAIL " + pid + " try=" + str(t2a + 1) + " " + str(e)[:200], flush=True)
+                    continue
+                reply2 = _r2
+                print("REPLY2-OK " + pid + " len=" + str(len(reply2)) + " try=" + str(t2a + 1), flush=True)
+                _b2 = reply2.strip()
+                if _b2.startswith("```"):
+                    _ls2 = _b2.split("\n")
+                    _b2 = "\n".join(_ls2[1:-1] if _ls2[-1].strip().startswith("```") else _ls2[1:])
+                _bl2 = _parse_blocks(_b2)
+                if not (_bl2 and all(p in ALLOW.get(pid, []) for (p, _s, _r) in _bl2)):
+                    continue
+                res2 = await _a.to_thread(harness, pid, reply2, TASKS[pid])
+                print("SCORED-T2TRY " + pid + " try=" + str(t2a + 1) + " " + res2, flush=True)
+                if "testrc=0" in res2 and ("blocks=%d/%d" % (len(_bl2), len(_bl2))) in res2:
+                    break
+                tail = FAIL_TAILS.get(pid, "")[-1500:]
+                fb = ("HARNESS FEEDBACK round " + str(t2a + 2) + " on your prior BLOCKS for " + pid + ":\n" + tail
+                      + "\nRevise BLOCKS ONLY (same contract: FILE:/SEARCH/======/>>>>>>, SEARCH copied verbatim from LOCALIZED CODE). Minimal fix only.\n\n" + PROMPTS[pid])
+            if reply2 is None:
                 continue
-            print("REPLY2-OK " + pid + " len=" + str(len(reply2)), flush=True)
+            if res2 is None:
+                res2 = await _a.to_thread(harness, pid, reply2, TASKS[pid])
             try:
                 open("/tmp/duck6_out/" + pid + ".reply2.txt", "w").write(reply2)
             except Exception:
                 pass
-            res2 = await _a.to_thread(harness, pid, reply2, TASKS[pid])
             results[pid] = res2 + " [turn2]"
             print("SCORED-COLLECTED-T2 " + pid + " " + results[pid], flush=True)
     finally:
