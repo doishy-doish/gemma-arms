@@ -1,0 +1,12 @@
+name: k3-gate (K3M2 math gate, CPU-only)
+on:
+  workflow_dispatch: {}
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: K3 LPT math gate (pure stdlib)
+        run: |
+          python3 cpu/k3-gate/k3_lpt.py
