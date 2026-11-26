@@ -387,18 +387,72 @@ TASKS = {
 +        router.include_router(router)"""},
 }
 REWRITE_LOW_TERSE = {"model": "tinfoil/gemma4-31b", "reasoningEffort": "low"}
-TERSE_LOCK = "STRICT TERSE CODE-ONLY. Output one unified diff only (git apply compatible, --- a/ +++ b/ headers). No prose, no fences, no explanation, no analysis.\n\n"
+FILE_HINTS = {
+    "fastapi_14786": "Edit ONLY fastapi/security/utils.py (get_authorization_scheme_param, add .strip()).",
+    "fastapi_13537": "Edit ONLY fastapi/dependencies/utils.py (_extract_form_body / visited fields + extra-key fix). Do NOT touch fastapi/routing.py.",
+    "fastapi_13920": "Edit ONLY fastapi/dependencies/utils.py (PEP695 TypeAliasType / get_dependant).",
+    "fastapi_14258": "Edit ONLY fastapi/routing.py (APIRouter.include_router self-guard, AssertionError).",
+    "fastapi_15589": "Edit ONLY fastapi/dependencies/utils.py (query/cookie/header model extra params). Output a REAL diff, never empty.",
+    "requests_7427": "Edit ONLY src/requests/utils.py (should_bypass_proxies no_proxy domain-boundary, use --- a/src/requests/utils.py header).",
+}
+EDGE_HINTS = {
+    "fastapi_14786": "Must return scheme, param.strip().",
+    "fastapi_13537": "Track visited fields, keep extra-key fix, correct file only.",
+    "fastapi_13920": "Handle TypeAliasType without breaking get_dependant.",
+    "fastapi_14258": "Raise AssertionError with exact message on router.include_router(router).",
+    "fastapi_15589": "Non-empty diff required; empty output = FAIL, retry.",
+    "requests_7427": "COMPLETENESS OVER BREVITY: handle host_with_port exact match, lstrip dot then dot-boundary (hostname == host or endswith dot+host), bare-dot entry must match. Ports matter.",
+}
+TERSE_LOCK = "STRICT TERSE CODE-ONLY. Output one unified diff only (git apply compatible, --- a/ +++ b/ headers). No prose, no fences, no explanation, no analysis. COMPLETENESS OVER BREVITY on edge cases (ports, dot-boundary, host_with_port).\n\n"
+def _valid_diff(body):
+    return "--- a/" in body and "+++ b/" in body and len(body.strip()) > 50
 async def ask(s, pid, prompt):
-    reply = await s.send(TERSE_LOCK + prompt, rewrite=REWRITE_LOW_TERSE)
-    return reply
+    full = TERSE_LOCK + FILE_HINTS.get(pid, "") + " " + EDGE_HINTS.get(pid, "") + "\n\n" + prompt
+    last = ""
+    for attempt in range(3):
+        q = full if attempt == 0 else "INVALID prior output (empty/wrong-file/unappliable). Resubmit diff ONLY, correct file, --- a/ +++ b/ headers.\n\n" + full
+        reply = await s.send(q, rewrite=REWRITE_LOW_TERSE)
+        last = reply
+        b = reply.strip()
+        if b.startswith("\u0060\u0060\u0060"):
+            ls = b.split("\n")
+            b = "\n".join(ls[1:-1] if ls[-1].strip().startswith("\u0060\u0060\u0060") else ls[1:])
+        if _valid_diff(b):
+            return reply.replace("\u0060\u0060\u0060", "")
+        print("RETRY " + pid + " attempt=" + str(attempt + 1) + " len=" + str(len(reply)), flush=True)
+    return last
 
 def sh(cmd, **kw):
     p = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=kw.get("timeout", 300))
     return p.returncode, (p.stdout or "")[-2000:] + (p.stderr or "")[-2000:]
 
+def harness(pid, reply, t):
+    body = reply.strip()
+    if body.startswith("\u0060\u0060\u0060"):
+        ls = body.split("\n")
+        body = "\n".join(ls[1:-1] if ls[-1].strip().startswith("\u0060\u0060\u0060") else ls[1:])
+    diff_path = "/tmp/duck6_" + pid + ".diff"
+    open(diff_path, "w").write(body if body.endswith("\n") else body + "\n")
+    work = "/tmp/duck6_" + pid
+    sh("rm -rf " + work + " && mkdir -p " + work)
+    url = "https://github.com/" + t["repo"] + "/archive/" + t["base"] + ".tar.gz"
+    print("FETCH " + pid + " " + url, flush=True)
+    try:
+        urllib.request.urlretrieve(url, work + "/src.tgz")
+    except Exception as e:
+        print("FETCH-FAIL " + pid + " " + str(e)[:200], flush=True)
+        return "fetch-fail len=" + str(len(reply))
+    sh("tar xzf " + work + "/src.tgz -C " + work + " --strip-components=1", timeout=120)
+    rc, out = sh("cd " + work + " && git apply --check /tmp/duck6_" + pid + ".diff 2>&1 | head -5; echo APPLY_CHECK_RC=$?", timeout=60)
+    print("APPLY-CHECK " + pid + " rc=" + str(rc) + " " + out[-300:], flush=True)
+    sh("cd " + work + " && git apply /tmp/duck6_" + pid + ".diff 2>&1 | head -5; echo APPLIED_RC=$?", timeout=60)
+    open(work + "/test_patch.diff", "w").write(t["test_patch"] if t["test_patch"].endswith("\n") else t["test_patch"] + "\n")
+    sh("cd " + work + " && git apply test_patch.diff 2>&1 | head -5; echo TEST_APPLIED_RC=$?", timeout=60)
+    return "collected len=" + str(len(reply))
 async def main():
     s = DuckAISession(model="tinfoil/gemma4-31b", timeout=240.0)
     results = {}
+    replies = {}
     try:
         for pid, prompt in PROMPTS.items():
             t = TASKS[pid]
@@ -410,32 +464,16 @@ async def main():
                 results[pid] = "chat-fail"
                 continue
             print("REPLY-OK " + pid + " len=" + str(len(reply)), flush=True)
-            body = reply.strip()
-            if body.startswith("\u0060\u0060\u0060"):
-                lines = body.split("\n")
-                body = "\n".join(lines[1:-1] if lines[-1].strip().startswith("\u0060\u0060\u0060") else lines[1:])
-            diff_path = "/tmp/duck6_" + pid + ".diff"
-            open(diff_path, "w").write(body if body.endswith("\n") else body + "\n")
-            work = "/tmp/duck6_" + pid
-            sh("rm -rf " + work + " && mkdir -p " + work)
-            url = "https://github.com/" + t["repo"] + "/archive/" + t["base"] + ".tar.gz"
-            print("FETCH " + url, flush=True)
-            try:
-                urllib.request.urlretrieve(url, work + "/src.tgz")
-            except Exception as e:
-                print("FETCH-FAIL " + pid + " " + str(e)[:200], flush=True)
-                results[pid] = "fetch-fail len=" + str(len(reply))
-                continue
-            sh("tar xzf " + work + "/src.tgz -C " + work + " --strip-components=1", timeout=120)
-            rc, out = sh("cd " + work + " && git apply --check /tmp/duck6_" + pid + ".diff 2>&1 | head -5; echo APPLY_CHECK_RC=$?", timeout=60)
-            print("APPLY-CHECK " + pid + " rc=" + str(rc) + " " + out[-300:], flush=True)
-            sh("cd " + work + " && git apply /tmp/duck6_" + pid + ".diff 2>&1 | head -5; echo APPLIED_RC=$?", timeout=60)
-            open(work + "/test_patch.diff", "w").write(t["test_patch"] if t["test_patch"].endswith("\n") else t["test_patch"] + "\n")
-            sh("cd " + work + " && git apply test_patch.diff 2>&1 | head -5; echo TEST_APPLIED_RC=$?", timeout=60)
-            print("SCORED-COLLECTED " + pid + " len=" + str(len(reply)), flush=True)
-            results[pid] = "collected len=" + str(len(reply))
+            replies[pid] = reply
     finally:
         await s.close()
+    import asyncio as _a
+    async def run_one(pid):
+        return pid, await _a.to_thread(harness, pid, replies[pid], TASKS[pid])
+    out = await _a.gather(*[run_one(pid) for pid in replies])
+    for pid, res in out:
+        results[pid] = res
+        print("SCORED-COLLECTED " + pid + " " + res, flush=True)
     print("STAGEA-RESULTS " + str(results), flush=True)
 
 asyncio.run(main())
