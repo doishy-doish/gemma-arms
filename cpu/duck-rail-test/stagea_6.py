@@ -20,8 +20,8 @@ Harness (checkout/apply/pytest) lives HERE, not in the API.
   diagnostic scaffolding and draw budget. Official budgets (calls/wall/
   compaction) are enforced server-side by their harness; our loop counts
   against nothing there and cannot be submitted (no Python entrypoints allowed).
-- Duck.ai CHAT RAIL driver: test transport only. Official serving = vLLM
-  tool-calling protocol on 4xL4. Chat-only tricks do not transfer.
+- Duck.ai CHAT RAIL: test transport only (official = vLLM tool-calling on 4xL4; chat tricks don't transfer).
+- PARALLEL-FIRE RULE: serial-depends-on-last may still fire in parallel at HIGH confidence (prior GREEN same SHA / mechanical byte-proof); gate is confidence, not order (M232).
 Rule: instrument freely here (faithfulness-only: never relax tests, never touch
 test files); the submission path takes only what transfers de-oracled.
 """
