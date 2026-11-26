@@ -1,0 +1,26 @@
+name: gemma-score-13537 (5-min probe, fastapi form tests only)
+on:
+  workflow_dispatch:
+jobs:
+  score:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: fastapi/fastapi
+          ref: 0.115.0
+          path: fastapi
+      - name: deps (minimal)
+        run: |
+          pip install -q pytest httpx python-multipart
+          python -c "import fastapi; print(fastapi.__version__)"
+      - name: apply stageB diff
+        run: |
+          cd fastapi
+          curl -sL -H "Authorization: Bearer ${{ secrets.GH_PAT }}" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/doishy-doish/gemma-arms/actions/artifacts/15118068021/zip" -o /tmp/d.zip || echo "direct dl try"
+          ls -la /tmp/d.zip || true
+      - name: run form tests only
+        run: |
+          cd fastapi
+          timeout 240 python -m pytest tests/test_forms_from_request.py -x -q 2>&1 | tail -20
