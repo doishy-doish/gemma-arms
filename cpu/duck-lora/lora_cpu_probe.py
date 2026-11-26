@@ -47,7 +47,7 @@ def main():
     log(f"base loaded mem={mem_gb():.2f}GB params={sum(p.numel() for p in model.parameters())/1e9:.2f}B")
 
     # ---- data: HumanEval, canonical solutions as SFT targets, 120 train / 44 held-out
-    ds = load_dataset("openai_humaneval")["test"]
+    ds = load_dataset("openai/openai_humaneval")["test"]
     items = [{"task_id": r["task_id"], "prompt": r["prompt"], "solution": r["canonical_solution"],
               "entry": r["entry_point"], "tests": r["test"]} for r in ds]
     train, held = items[:120], items[120:]
