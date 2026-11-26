@@ -349,7 +349,7 @@ def _parse_blocks(body):
 async def ask(s, pid, prompt):
     full = CONTRACT + FILE_HINTS.get(pid, "") + " " + EDGE_HINTS.get(pid, "") + " " + ORACLES.get(pid, "") + "\n\n" + prompt
     last = ""
-    for attempt in range(3):
+    for attempt in range(5):
         q = full if attempt == 0 else "INVALID prior output (unparseable block, wrong FILE, or ambiguous SEARCH). Resubmit BLOCKS ONLY, correct FILE, SEARCH copied verbatim from LOCALIZED CODE.\n\n" + full
         reply = await s.send(q, rewrite=REWRITE_LOW_TERSE)
         last = reply
