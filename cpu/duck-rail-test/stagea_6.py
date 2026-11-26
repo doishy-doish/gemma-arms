@@ -469,7 +469,7 @@ def harness(pid, reply, t):
     sh("cd " + work + " && git apply test_patch.diff 2>&1 | head -5; echo TEST_APPLIED_RC=$?", timeout=60)
     ensure_deps()
     tf = PYTESTS.get(pid, "")
-    trc, tout = sh("cd " + work + " && python -m pytest " + tf + " -q -W ignore::PendingDeprecationWarning -p no:cacheprovider > pytest_out.txt 2>&1; echo PYTEST_RC=$?; tail -15 pytest_out.txt", timeout=300)
+    trc, tout = sh("cd " + work + " && python -m pytest " + tf + " -q -W ignore::PendingDeprecationWarning -W ignore::DeprecationWarning -p no:cacheprovider > pytest_out.txt 2>&1; echo PYTEST_RC=$?; tail -15 pytest_out.txt", timeout=300)
     sh("cp " + work + "/pytest_out.txt " + OUT_DIR + "/" + pid + ".pytest.txt", timeout=30)
     import re as _re
     _m = _re.search(r"PYTEST_RC=(\d+)", tout)
