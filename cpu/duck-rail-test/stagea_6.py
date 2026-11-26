@@ -2,6 +2,29 @@
 Model: tinfoil/gemma4-31b via browser rail (pure chat API, no harness in Duck).
 Harness (checkout/apply/pytest) lives HERE, not in the API.
 """
+
+"""TESTING-ONLY BUNDLE (not submittable) — what stays here and why it cannot ship:
+- THIS FILE (+ duckapi_duckai.py rail driver) is OUR measurement instrument on
+  GitHub Actions. Official grading runs THEIR harness (HARNESS_README:
+  Container A agent -> git diff -> Container B hermetic pytest) over
+  submission.zip. Nothing here transfers; similarity is behavioral at best.
+- ORACLES (exact import lines, recipes, forbid-lists): per-task answer keys for
+  calibration. A submission must be a general agent (single-model rule,
+  declarative-only: agent.yaml/prompts/skills/adapters — no Python
+  orchestration, no hardcoded per-task answers). Shipping oracles = overfit to
+  6 tasks, scores ~0 on the hidden set.
+- PINNED 6 (TASKS/SLICES/PYTESTS at fixed base commits + test patches): our
+  private slice. Official eval = full hidden task set; this bundle covers none
+  of it.
+- RETRY/T2/REVISE LOOPS, verbose tails, FAIL_TAILS, MODFILE/SHADOW-GUARD: our
+  diagnostic scaffolding and draw budget. Official budgets (calls/wall/
+  compaction) are enforced server-side by their harness; our loop counts
+  against nothing there and cannot be submitted (no Python entrypoints allowed).
+- Duck.ai CHAT RAIL driver: test transport only. Official serving = vLLM
+  tool-calling protocol on 4xL4. Chat-only tricks do not transfer.
+Rule: instrument freely here (faithfulness-only: never relax tests, never touch
+test files); the submission path takes only what transfers de-oracled.
+"""
 import asyncio, os, sys, subprocess, tarfile, threading, urllib.request
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from duckapi_duckai import DuckAISession
