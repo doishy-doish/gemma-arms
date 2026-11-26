@@ -292,6 +292,14 @@ ORACLES = {
     "requests_7427": "ORACLE: after split comma STRIP each entry; bare dot matches all; port entries: netloc == x or netloc endswith dot+x (subdomain+port); others: lstrip dot then hostname == x or endswith dot+x.",
 }
 def _parse_blocks(body):
+    # SLICE-2 delimiter tolerance: models wrap blocks in fences and vary
+    # chevrons/spacing (<<<< SEARCH, <<<<<<< SEARCH). Flex ONLY delimiter
+    # lines via regex; SEARCH/repl CONTENT bytes stay exact (fidelity gate
+    # lives in harness). A trailing ``` fence line is ignored.
+    import re as _rx
+    _SEARCH_RE = _rx.compile(r"^\s*<{4,8}\s*SEARCH\s*$")
+    _SEP_RE = _rx.compile(r"^\s*={4,8}\s*$")
+    _END_RE = _rx.compile(r"^\s*>{4,8}\s*$")
     blocks = []
     parts = body.split("FILE:")
     if len(parts) < 2:
@@ -300,14 +308,16 @@ def _parse_blocks(body):
         nl = p.find("\n")
         if nl < 0:
             return None
-        path = p[:nl].strip()
+        path = p[:nl].strip().strip("`").strip()
         lines = p[nl + 1:].split("\n")
-        if not lines or lines[0].strip() != "<<<<<< SEARCH":
+        while lines and lines[-1].strip() in ("```",):
+            lines.pop()
+        if not lines or not _SEARCH_RE.match(lines[0]):
             return None
         try:
-            mi = lines.index("======")
-            ei = lines.index(">>>>>>")
-        except ValueError:
+            mi = next(i for i, ln in enumerate(lines) if _SEP_RE.match(ln))
+            ei = next(i for i, ln in enumerate(lines) if _END_RE.match(ln))
+        except StopIteration:
             return None
         if mi <= 1 or ei <= mi + 1:
             return None
@@ -350,7 +360,7 @@ def ensure_deps():
     with _DEPS_LOCK:
         if _DEPS_OK:
             return
-        sh("pip install -q fastapi pytest httpx requests python-multipart 2>&1 | tail -1", timeout=300)
+        sh("pip install -q fastapi pytest requests python-multipart starlette==0.37.2 httpx==0.27.2 2>&1 | tail -1", timeout=300)
         _DEPS_OK = True
 
 
@@ -358,6 +368,9 @@ def sh(cmd, **kw):
     p = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=kw.get("timeout", 300))
     return p.returncode, (p.stdout or "")[-2000:] + (p.stderr or "")[-2000:]
 
+# SLICE-2 Turn-2 feedback: harness records actionable failure tails here;
+# main() sends at most ONE follow-up per pid in the same session.
+FAIL_TAILS = {}
 def harness(pid, reply, t):
     body = reply.strip()
     if body.startswith("```"):
@@ -366,13 +379,23 @@ def harness(pid, reply, t):
     blocks = _parse_blocks(body)
     if not blocks:
         print("EMPTY-DIFF " + pid + " len=" + str(len(body)), flush=True)
+        FAIL_TAILS[pid] = "no parseable FILE:/SEARCH blocks in reply len=" + str(len(body)) + " — resubmit BLOCKS ONLY, SEARCH copied verbatim from LOCALIZED CODE slice"
         return "empty len=" + str(len(body))
     ok_paths = ALLOW.get(pid, [])
     for (path, _s, _r) in blocks:
         if path not in ok_paths:
             print("WRONG-FILE " + pid + " " + path, flush=True)
             return "wrong-file " + path
-    raw_path = "/tmp/duck6_" + pid + ".blocks"
+    # SLICE-2 (M471): ALL collected outputs go to OUT_DIR only (blocks +
+    # real unified diffs + replies + pytest tails). Work checkouts + tarballs
+    # stay in /tmp/duck6_<pid> and are NEVER uploaded (prior /tmp/duck6_*
+    # glob caught worktrees+tarballs = 146MB bloat; target <5MB).
+    OUT_DIR = "/tmp/duck6_out"
+    try:
+        os.makedirs(OUT_DIR, exist_ok=True)
+    except Exception:
+        pass
+    raw_path = OUT_DIR + "/" + pid + ".blocks"
     open(raw_path, "w").write(body if body.endswith("\n") else body + "\n")
     work = "/tmp/duck6_" + pid
     sh("rm -rf " + work + " && mkdir -p " + work)
@@ -385,6 +408,7 @@ def harness(pid, reply, t):
         return "fetch-fail len=" + str(len(reply))
     sh("tar xzf " + work + "/src.tgz -C " + work + " --strip-components=1", timeout=120)
     applied = []
+    origs = {}
     for (path, search, repl) in blocks:
         fp = work + "/" + path
         try:
@@ -393,11 +417,48 @@ def harness(pid, reply, t):
             print("READ-FAIL " + pid + " " + path, flush=True)
             return "read-fail " + path
         n = content.count(search)
-        if n != 1:
-            print("SEARCH-" + ("MISS" if n == 0 else "AMBIGUOUS") + " " + pid + " " + path + " n=" + str(n), flush=True)
-            return "search-" + ("miss" if n == 0 else "ambiguous") + " " + path
-        open(fp, "w").write(content.replace(search, repl, 1))
+        if n == 1:
+            new_content = content.replace(search, repl, 1)
+        elif n == 0:
+            # SLICE-2 whitespace fallback: trailing-whitespace-insensitive
+            # match, applied ONLY on a strictly unique line-range hit
+            # (verified before replace). Still a miss otherwise.
+            new_content = None
+            olines = content.split("\n")
+            norm = "\n".join(ln.rstrip() for ln in olines)
+            nsearch = "\n".join(ln.rstrip() for ln in search.split("\n"))
+            if nsearch.strip() and norm.count(nsearch) == 1:
+                start = norm.find(nsearch)
+                pre = norm[:start].count("\n")
+                nlines = nsearch.count("\n") + 1
+                if pre + nlines <= len(olines):
+                    cand = "\n".join(olines[pre:pre + nlines])
+                    if "\n".join(ln.rstrip() for ln in cand.split("\n")) == nsearch:
+                        print("SEARCH-WSFALLBACK " + pid + " " + path + " lines=" + str(nlines), flush=True)
+                        olines[pre:pre + nlines] = repl.split("\n")
+                        new_content = "\n".join(olines)
+            if new_content is None:
+                print("SEARCH-MISS " + pid + " " + path + " n=0", flush=True)
+                FAIL_TAILS[pid] = "SEARCH block not found verbatim in " + path + " — copy exact lines from the LOCALIZED CODE slice (byte-for-byte, no rewording)"
+                return "search-miss " + path
+        else:
+            print("SEARCH-AMBIGUOUS " + pid + " " + path + " n=" + str(n), flush=True)
+            FAIL_TAILS[pid] = "SEARCH block matches " + str(n) + " places in " + path + " — extend SEARCH with more surrounding context lines until unique"
+            return "search-ambiguous " + path
+        origs[path] = content
+        open(fp, "w").write(new_content)
         applied.append(path)
+    # SLICE-2: real unified diffs into OUT_DIR (verdict evidence, not the
+    # .blocks proposals — applied-file diff is what pytest actually ran).
+    try:
+        import difflib
+        dl = []
+        for path in applied:
+            new = open(work + "/" + path).read()
+            dl.extend(difflib.unified_diff(origs[path].splitlines(), new.splitlines(), "a/" + path, "b/" + path, lineterm=""))
+        open(OUT_DIR + "/" + pid + ".diff", "w").write("\n".join(dl) + "\n" if dl else "")
+    except Exception as e:
+        print("DIFF-FAIL " + pid + " " + str(e)[:160], flush=True)
     rc, out = sh("cd " + work + " && python -m py_compile " + " ".join(applied) + " 2>&1; echo COMPILE_RC=$?", timeout=60)
     print("COMPILE " + pid + " rc=" + str(rc) + " " + out[-200:], flush=True)
     open(work + "/test_patch.diff", "w").write(t["test_patch"] if t["test_patch"].endswith("\n") else t["test_patch"] + "\n")
@@ -405,17 +466,20 @@ def harness(pid, reply, t):
     ensure_deps()
     tf = PYTESTS.get(pid, "")
     trc, tout = sh("cd " + work + " && python -m pytest " + tf + " -q > pytest_out.txt 2>&1; echo PYTEST_RC=$?; tail -15 pytest_out.txt", timeout=300)
+    sh("cp " + work + "/pytest_out.txt " + OUT_DIR + "/" + pid + ".pytest.txt", timeout=30)
     import re as _re
     _m = _re.search(r"PYTEST_RC=(\d+)", tout)
     _ptr = _m.group(1) if _m else "?"
     print("TEST-RESULT " + pid + " rc=" + str(trc) + " pytest_rc=" + _ptr + " " + tout[-800:], flush=True)
+    if str(_ptr) != "0":
+        FAIL_TAILS[pid] = "pytest failed (pytest_rc=" + str(_ptr) + "):\n" + tout[-1500:]
     return "collected len=" + str(len(reply)) + " testrc=" + _ptr
 
 async def main():
     s = DuckAISession(model="tinfoil/gemma4-31b", timeout=240.0)
     results = {}
     replies = {}
-    try:
+    if True:  # (was try/finally-close; close moved after TURN-2)
         for pid, prompt in PROMPTS.items():
             t = TASKS[pid]
             print("=== TASK " + pid + " (" + t["repo"] + "@" + t["base"][:12] + ") ===", flush=True)
@@ -427,8 +491,14 @@ async def main():
                 continue
             print("REPLY-OK " + pid + " len=" + str(len(reply)), flush=True)
             replies[pid] = reply
-    finally:
-        await s.close()
+            # SLICE-2: save the FULL raw reply (13920/14258 diagnosis needs
+            # the unmodified model text, not just parsed blocks).
+            try:
+                os.makedirs("/tmp/duck6_out", exist_ok=True)
+                open("/tmp/duck6_out/" + pid + ".reply.txt", "w").write(reply)
+            except Exception as e:
+                print("REPLY-SAVE-FAIL " + pid + " " + str(e)[:120], flush=True)
+    # (no close here — session stays open for TURN-2 below; closed after)
     import asyncio as _a
     async def run_one(pid):
         return pid, await _a.to_thread(harness, pid, replies[pid], TASKS[pid])
@@ -436,6 +506,36 @@ async def main():
     for pid, res in out:
         results[pid] = res
         print("SCORED-COLLECTED " + pid + " " + res, flush=True)
+    # TURN-2 (SLICE-2): ONE follow-up in the SAME session for actionable
+    # harness failures only: pytest_rc=1 (real test failures, e.g. 7427
+    # prelocalhost tail), search-miss, empty. Env/collection failures
+    # (pytest_rc 2/4/5) are NOT model faults — no retry, no variance burn.
+    try:
+        t2pids = []
+        for pid, res in out:
+            if res.startswith("search-miss") or res.startswith("empty"):
+                t2pids.append(pid)
+            elif "testrc=1" in res:
+                t2pids.append(pid)
+        for pid in t2pids:
+            tail = FAIL_TAILS.get(pid, "")[-1500:]
+            fb = ("HARNESS FEEDBACK on your prior BLOCKS for " + pid + ":\n" + tail
+                  + "\nResubmit BLOCKS ONLY (same contract: FILE:/SEARCH/======/>>>>>>, SEARCH copied verbatim from LOCALIZED CODE). Minimal fix only.\n\n" + PROMPTS[pid])
+            try:
+                reply2 = await s.send(fb, rewrite=REWRITE_LOW_TERSE)
+            except Exception as e:
+                print("TURN2-FAIL " + pid + " " + str(e)[:200], flush=True)
+                continue
+            print("REPLY2-OK " + pid + " len=" + str(len(reply2)), flush=True)
+            try:
+                open("/tmp/duck6_out/" + pid + ".reply2.txt", "w").write(reply2)
+            except Exception:
+                pass
+            res2 = await _a.to_thread(harness, pid, reply2, TASKS[pid])
+            results[pid] = res2 + " [turn2]"
+            print("SCORED-COLLECTED-T2 " + pid + " " + results[pid], flush=True)
+    finally:
+        await s.close()
     print("STAGEA-RESULTS " + str(results), flush=True)
 
 asyncio.run(main())

@@ -19,5 +19,9 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: duck6-diffs
-          path: /tmp/duck6_*
+          name: duck6-slice2
+          # SLICE-2 TIGHT GLOB (M471): OUT_DIR only — .blocks + .diff +
+          # .reply.txt + .pytest.txt. Checkouts/tarballs in /tmp/duck6_<pid>
+          # are NEVER uploaded (prior /tmp/duck6_* glob = 146MB bloat).
+          path: /tmp/duck6_out/
+          if-no-files-found: warn
