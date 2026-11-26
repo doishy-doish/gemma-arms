@@ -1,0 +1,26 @@
+name: duck-lora-probe (CPU LoRA feasibility, capped, public-safe)
+on:
+  workflow_dispatch: {}
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - name: deps (CPU torch, no keys, HF-only)
+        run: |
+          pip install -q --index-url https://download.pytorch.org/whl/cpu torch
+          pip install -q transformers peft datasets
+          python -c "import torch, transformers, peft; print('stack ok', torch.__version__)"
+      - name: run capped probe
+        run: |
+          cd cpu/duck-lora && PROBE_HOURS=2.5 MAX_STEPS=150 python lora_cpu_probe.py > /tmp/lora_out/console.log 2>&1; echo PROBE_RC=$?; tail -30 /tmp/lora_out/console.log
+      - name: upload (metrics + adapter, no secrets involved)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: duck-lora-probe
+          path: /tmp/lora_out/
+          if-no-files-found: warn
