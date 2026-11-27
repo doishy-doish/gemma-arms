@@ -1,3 +1,16 @@
+# HOW THIS VEHICLE IS SUPPOSED TO BE WRITTEN (M724, durable just-in-case note).
+# (1) Prompts reuse the proven CONTRACT constant VERBATIM (by reference, never paraphrased).
+#     M723: a hand-assembled paraphrase dropped the machine-readable FILE:/SEARCH shape and
+#     voided a full 6-slot rail (0/6 measured the prompt bug, not difficulty).
+# (2) Any reply-parser change ships with a parse-smoke: golden sample (must score) +
+#     adversarial prose (must void) through the SHIPPED parser path before push (M672/M723).
+# (3) Dependencies are fleet-wide: a new pip/test package lands in the rail ensure_deps AND
+#     every staged F2P PIPPKGS AND every staged rail copy, grep-verified same turn (M722:
+#     per-vehicle patching let inline_snapshot/sqlalchemy kill slots after M709/M495 named them).
+# (4) Evidence lines print the tool own rc (e.g. echo RC=$? right after the tool, before tail)
+#     or a grep summary -- never the tail pipe own rc; asserts check FULL captured text (M666/M721e).
+# (5) One variable per fire; pre-reg (predictions + kill rules) BEFORE staging (M632).
+# Lineage: M717-M724. This header is comment-only and changes no behavior.
 """R6 return-to-6 (same-6 ladder on h5-t1only-b2 base 614d8def; 2725/3296 retired to comments; T2 net restored; M717).
 F5 ladder: A=14786/13537/14258/15589 + B=3905/3894 on anchor base (B3 owed; cite M575).
 Builder: scratch/roulette/roulette-build.js. Anchor fragments byte-verbatim from scratch/duck-6-stagea_6.py; candidate fragments pyDq-escaped from scratch/roulette/spec-*.json (round-trip verified).
@@ -461,7 +474,7 @@ def ensure_deps():
         # in fastapi src). Agent never emits it; eval image has it baked. Without it every
         # pytest dies at collection (0/6 verified). Harness-only line (runners are online);
         # the submission bundle itself must still assume offline (M495a).
-        sh("pip install -q fastapi pytest pytest-timeout requests python-multipart annotated-doc starlette==0.37.2 httpx==0.27.2 2>&1 | tail -1", timeout=300)
+        sh("pip install -q fastapi pytest pytest-timeout requests python-multipart annotated-doc starlette==0.37.2 httpx==0.27.2 inline-snapshot sqlalchemy 2>&1 | tail -1", timeout=300)
         sh("pip install -q tornado pyramid webtest pygments 2>&1 | tail -1", timeout=300)
         _DEPS_OK = True
 
@@ -675,10 +688,12 @@ COMPOSITE_GROUPS = {
     "C6": ["fastapi_14485", "rich_3296"],
 }
 BT = chr(96) + chr(96) + chr(96)
-COMPOSITE_HEADER = "You are an expert Python engineer. Fix TWO independent tasks in ONE reply (cross-repo pair). Output edit blocks only: no prose, no fences, no explanation. Emit at least one FILE block per half (both halves REQUIRED). Minimal fix per half."
-COMPOSITE_TAIL = "Block shape (repeat per hunk; several FILE sections allowed). SEARCH must occur in the target file byte-for-byte exactly once. Minimal fix only."
+COMPOSITE_HEADER = CONTRACT
+COMPOSITE_MID = "\nPAIRED-SLOT ADDENDUM (both halves REQUIRED -- same GOODRUN envelope, no extra budget):\n- Emit at least one FILE block per half in ONE reply (HALF A and HALF B both REQUIRED; covering one half scores the slot empty).\n- Allowed files are listed per half below; a FILE path outside the half\u0027s list voids the reply.\n- Minimal fix per half; no cross-contamination (SEARCH text from one repo never applies to the other)."
+COMPOSITE_TAIL = "Repeat the CONTRACT shape per hunk; several FILE sections allowed (at least one per half). SEARCH must occur in the target file byte-for-byte exactly once."
+# COMPOSITE_TAIL removed M724 (replaced by CONTRACT-verbatim header + precise TAIL above)
 def build_composite_prompt(a, b):
-    return (COMPOSITE_HEADER + chr(10) + chr(10) + "HALF A (" + a + "):" + chr(10) + ISSUES[a] + chr(10) + chr(10) + "LOCALIZED CODE A (verbatim from the base commit; SEARCH blocks must be copied from here byte-for-byte):" + chr(10) + SLICES[a] + chr(10) + chr(10) + "HALF B (" + b + "):" + chr(10) + ISSUES[b] + chr(10) + chr(10) + "LOCALIZED CODE B (verbatim from the base commit; SEARCH blocks must be copied from here byte-for-byte):" + chr(10) + SLICES[b] + chr(10) + COMPOSITE_TAIL)
+    return (COMPOSITE_HEADER + COMPOSITE_MID + chr(10) + "Allowed HALF A files: " + str(ALLOW[a]) + chr(10) + "Allowed HALF B files: " + str(ALLOW[b]) + chr(10) + chr(10) + "HALF A (" + a + "):" + chr(10) + ISSUES[a] + chr(10) + chr(10) + "LOCALIZED CODE A (verbatim from the base commit; SEARCH blocks must be copied from here byte-for-byte):" + chr(10) + SLICES[a] + chr(10) + chr(10) + "HALF B (" + b + "):" + chr(10) + ISSUES[b] + chr(10) + chr(10) + "LOCALIZED CODE B (verbatim from the base commit; SEARCH blocks must be copied from here byte-for-byte):" + chr(10) + SLICES[b] + chr(10) + COMPOSITE_TAIL)
 COMPOSITE_PROMPTS = {}
 for _cid, (_ha, _hb) in COMPOSITE_GROUPS.items():
     COMPOSITE_PROMPTS[_cid] = build_composite_prompt(_ha, _hb)
