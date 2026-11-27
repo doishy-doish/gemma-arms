@@ -305,7 +305,7 @@ async def ask(s, pid, prompt):
 _DEPS_OK = False
 _DEPS_LOCK = threading.Lock()
 PYTESTS = {
-    """tornado_s6b""": """undefined -k 'test_redirect_without_location'""",
+    """tornado_s6b""": "tornado/test/httpclient_test.py -k \"test_redirect_without_location\"",
 }
 def ensure_deps():
     global _DEPS_OK
