@@ -130,6 +130,10 @@ async def ask(s, pid, prompt):
         q = full if attempt == 0 else "INVALID prior output (unparseable block, wrong FILE, or ambiguous SEARCH). Resubmit BLOCKS ONLY, correct FILE, SEARCH copied verbatim from LOCALIZED CODE.\n\n" + full
         reply = await s.send(q, rewrite=REWRITE_LOW_TERSE)
         last = reply
+        try:
+            open(OUT_DIR + "/" + pid + ".attempt" + str(attempt + 1) + ".txt", "w").write(reply)
+        except Exception:
+            pass
         b = reply.strip()
         if b.startswith("```"):
             ls = b.split("\n")
