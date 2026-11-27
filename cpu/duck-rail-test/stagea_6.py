@@ -1,4 +1,4 @@
-"""O4 rich_3296-as-B4 (vs B3-wire 9817b77 4/7 T1; one variable: ADD rich_3296 as 8th task, all 7 existing byte-identical).
+"""O4fix PYTESTS-scope for rich_3296 (vs O4 e65f8a7; one variable: single-node test scope; all 8 tasks byte-identical).
 F5 ladder: A=14786/13537/14258/15589 + B=3905/3894 on anchor base (B3 owed; cite M575).
 Builder: scratch/roulette/roulette-build.js. Anchor fragments byte-verbatim from scratch/duck-6-stagea_6.py; candidate fragments pyDq-escaped from scratch/roulette/spec-*.json (round-trip verified).
 """
@@ -381,6 +381,7 @@ PYTESTS = {
     "fastapi_15589": "tests/test_query_cookie_header_model_extra_params.py",
     """rich_3894""": "tests/test_inspect.py -k test_qualname_in_slots",
     """rich_2725""": "tests/test_table.py -k test_placement_table_box_elements",
+    """rich_3296""": "tests/test_syntax.py -k test_background_color_override_includes_padding",
 }
 def ensure_deps():
     global _DEPS_OK
