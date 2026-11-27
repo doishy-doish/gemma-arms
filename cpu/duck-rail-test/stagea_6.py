@@ -402,6 +402,7 @@ def harness(pid, reply, t):
     mod = t["repo"].split("/")[1]
     pyenv = "PYTHONPATH=" + work + ":" + work + "/src"
     open(work + "/conftest.py", "w").write("import inspect as _i\n_i.getargspec = getattr(_i, 'getargspec', _i.getfullargspec)\n")
+    mrc, mout = sh("cd " + work + " && " + pyenv + " python -c \"import " + mod + "; print(" + mod + ".__file__)\" 2>&1 | tail -2", timeout=60)
     print("MODFILE " + pid + " " + mod + " " + mout[-160:], flush=True)
     if (work + "/") not in mout:
         FAIL_TAILS[pid] = "shadow import: " + mod + " resolves outside work dir (" + mout[-160:] + ") — tarball code would NOT run; fix PYTHONPATH/install before trusting pytest"
