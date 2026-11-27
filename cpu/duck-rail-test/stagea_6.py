@@ -74,6 +74,7 @@ FILE: <exact repo-relative path>
 - SEARCH must occur in the target file byte-for-byte exactly once. Keep SEARCH minimal but unique (include enough surrounding context).
 - Multiple SEARCH/======/>>>>>> pairs allowed under one FILE: header (one pair per hunk); every pair is matched independently, all must match.
 - Minimal fix only.
+- Before emitting, re-check each SEARCH block against LOCALIZED CODE: it must match byte-for-byte exactly once or the whole reply is discarded.
 """
 ALLOW = {
     """fastapi_14786""": ["""fastapi/security/utils.py"""],
