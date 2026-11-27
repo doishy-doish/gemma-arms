@@ -1,389 +1,26 @@
-"""ROULETTE stagea (DRY-RUN, not fired) — seed 7, pool v1.
-F5 ladder: A=14786/13537/14258/15589 + B=3905/3894 on anchor base (B3 owed; cite M575).
-Builder: scratch/roulette/roulette-build.js. Anchor fragments byte-verbatim from scratch/duck-6-stagea_6.py; candidate fragments pyDq-escaped from scratch/roulette/spec-*.json (round-trip verified).
-"""
-"""Duck stage-A PERSONA (reasoning low + terse lock + ORACLES exactness): same-6 clean-room, one turn each, then public-proxy score.
-Model: tinfoil/gemma4-31b via browser rail (pure chat API, no harness in Duck).
-Harness (checkout/apply/pytest) lives HERE, not in the API.
-"""
-
-"""TESTING-ONLY BUNDLE (not submittable) — what stays here and why it cannot ship:
-- THIS FILE (+ duckapi_duckai.py rail driver) is OUR measurement instrument on
-  GitHub Actions. Official grading runs THEIR harness (HARNESS_README:
-  Container A agent -> git diff -> Container B hermetic pytest) over
-  submission.zip. Nothing here transfers; similarity is behavioral at best.
-- ORACLES (exact import lines, recipes, forbid-lists): per-task answer keys for
-  calibration. A submission must be a general agent (single-model rule,
-  declarative-only: agent.yaml/prompts/skills/adapters — no Python
-  orchestration, no hardcoded per-task answers). Shipping oracles = overfit to
-  6 tasks, scores ~0 on the hidden set.
-- PINNED 6 (TASKS/SLICES/PYTESTS at fixed base commits + test patches): our
-  private slice. Official eval = full hidden task set; this bundle covers none
-  of it.
-- RETRY/T2/REVISE LOOPS, verbose tails, FAIL_TAILS, MODFILE/SHADOW-GUARD: our
-  diagnostic scaffolding and draw budget. Official budgets (calls/wall/
-  compaction) are enforced server-side by their harness; our loop counts
-  against nothing there and cannot be submitted (no Python entrypoints allowed).
-- Duck.ai CHAT RAIL: test transport only (official = vLLM tool-calling on 4xL4; chat tricks don't transfer).
-- PARALLEL-FIRE RULE: serial-depends-on-last may still fire in parallel at HIGH confidence (prior GREEN same SHA / mechanical byte-proof); gate is confidence, not order (M232).
-Rule: instrument freely here (faithfulness-only: never relax tests, never touch
-test files); the submission path takes only what transfers de-oracled.
-"""
-import asyncio, os, sys, subprocess, tarfile, threading, urllib.request
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from duckapi_duckai import DuckAISession
-
-SLICES = {
-    """fastapi_14786""": "from typing import Optional\n\n\ndef get_authorization_scheme_param(\n    authorization_header_value: Optional[str],\n) -> tuple[str, str]:\n    if not authorization_header_value:\n        return \"\", \"\"\n    scheme, _, param = authorization_header_value.partition(\" \")\n    return scheme, param\n",
-    """fastapi_13537""": "def request_params_to_args(\n    fields: Sequence[ModelField],\n    received_params: Union[Mapping[str, Any], QueryParams, Headers],\n) -> Tuple[Dict[str, Any], List[Any]]:\n    values: Dict[str, Any] = {}\n    errors: List[Dict[str, Any]] = []\n\n    if not fields:\n        return values, errors\n\n    first_field = fields[0]\n    fields_to_extract = fields\n    single_not_embedded_field = False\n    default_convert_underscores = True\n    if len(fields) == 1 and lenient_issubclass(first_field.type_, BaseModel):\n        fields_to_extract = get_cached_model_fields(first_field.type_)\n        single_not_embedded_field = True\n        # If headers are in a Pydantic model, the way to disable convert_underscores\n        # would be with Header(convert_underscores=False) at the Pydantic model level\n        default_convert_underscores = getattr(\n            first_field.field_info, \"convert_underscores\", True\n        )\n\n    params_to_process: Dict[str, Any] = {}\n\n    processed_keys = set()\n\n    for field in fields_to_extract:\n        alias = None\n        if isinstance(received_params, Headers):\n            # Handle fields extracted from a Pydantic Model for a header, each field\n            # doesn't have a FieldInfo of type Header with the default convert_underscores=True\n            convert_underscores = getattr(\n                field.field_info, \"convert_underscores\", default_convert_underscores\n            )\n            if convert_underscores:\n                alias = (\n                    field.alias\n                    if field.alias != field.name\n                    else field.name.replace(\"_\", \"-\")\n                )\n        value = _get_multidict_value(field, received_params, alias=alias)\n        if value is not None:\n            params_to_process[field.name] = value\n        processed_keys.add(alias or field.alias)\n        processed_keys.add(field.name)\n\n    for key, value in received_params.items():\n        if key not in processed_keys:\n            params_to_process[key] = value\n\n    if single_not_embedded_field:\n        field_info = first_field.field_info\n        assert isinstance(field_info, (params.Param, temp_pydantic_v1_params.Param)), (\n            \"Params must be subclasses of Param\"\n        )\n        loc: Tuple[str, ...] = (field_info.in_.value,)\n        v_, errors_ = _validate_value_with_model_field(\n            field=first_field, value=params_to_process, values=values, loc=loc\n        )\n        return {first_field.name: v_}, errors_\n\n    for field in fields:\n        value = _get_multidict_value(field, received_params)\n        field_info = field.field_info\n        assert isinstance(field_info, (params.Param, temp_pydantic_v1_params.Param)), (\n            \"Params must be subclasses of Param\"\n        )\n        loc = (field_info.in_.value, field.alias)\n        v_, errors_ = _validate_value_with_model_field(\n            field=field, value=value, values=values, loc=loc\n        )\n        if errors_:\n            errors.extend(errors_)\n        else:\n            values[field.name] = v_\n    return values, errors\n\n\ndef is_union_of_base_models(field_type: Any) -> bool:\n    \"\"\"Check if field type is a Union where all members are BaseModel subclasses.\"\"\"\n    from fastapi.types import UnionType\n\n    origin = get_origin(field_type)\n\n    # Check if it's a Union type (covers both typing.Union and types.UnionType in Python 3.10+)\n    if origin is not Union and origin is not UnionType:\n        return False\n\n    union_args = get_args(field_type)\n\n    for arg in union_args:\n        if not _is_model_class(arg):\n            return False\n\n    return True\n\n\ndef _should_embed_body_fields(fields: List[ModelField]) -> bool:\n    if not fields:\n        return False\n    # More than one dependency could have the same field, it would show up as multiple\n    # fields but it's the same one, so count them by name\n    body_param_names_set = {field.name for field in fields}\n    # A top level field has to be a single field, not multiple\n    if len(body_param_names_set) > 1:\n        return True\n    first_field = fields[0]\n    # If it explicitly specifies it is embedded, it has to be embedded\n    if getattr(first_field.field_info, \"embed\", None):\n        return True\n    # If it's a Form (or File) field, it has to be a BaseModel (or a union of BaseModels) to be top level\n    # otherwise it has to be embedded, so that the key value pair can be extracted\n    if (\n        isinstance(first_field.field_info, (params.Form, temp_pydantic_v1_params.Form))\n        and not _is_model_class(first_field.type_)\n        and not is_union_of_base_models(first_field.type_)\n    ):\n        return True\n    return False\n\n\nasync def _extract_form_body(\n    body_fields: List[ModelField],\n    received_body: FormData,\n) -> Dict[str, Any]:\n    values = {}\n\n    for field in body_fields:\n        value = _get_multidict_value(field, received_body)\n        field_info = field.field_info\n        if (\n            isinstance(field_info, (params.File, temp_pydantic_v1_params.File))\n            and is_bytes_field(field)\n            and isinstance(value, UploadFile)\n        ):\n            value = await value.read()\n        elif (\n            is_bytes_sequence_field(field)\n            and isinstance(field_info, (params.File, temp_pydantic_v1_params.File))\n            and value_is_sequence(value)\n        ):\n            # For types\n            assert isinstance(value, sequence_types)  # type: ignore[arg-type]\n            results: List[Union[bytes, str]] = []\n\n            async def process_fn(\n                fn: Callable[[], Coroutine[Any, Any, Any]],\n            ) -> None:\n                result = await fn()\n                results.append(result)  # noqa: B023\n\n            async with anyio.create_task_group() as tg:\n                for sub_value in value:\n                    tg.start_soon(process_fn, sub_value.read)\n            value = serialize_sequence_value(field=field, value=results)\n        if value is not None:\n            values[field.alias] = value\n    for key, value in received_body.items():\n        if key not in values:\n            values[key] = value\n    return values\n\n\nasync def request_body_to_args(\n",
-    """rich_3905""": "            return all(task.finished for task in self._tasks.values())\n\n    def start(self) -> None:\n        \"\"\"Start the progress display.\"\"\"\n        if not self.disable:\n            self.live.start(refresh=True)\n\n    def stop(self) -> None:\n        \"\"\"Stop the progress display.\"\"\"\n        self.live.stop()\n        if not self.console.is_interactive and not self.console.is_jupyter:\n            self.console.print()\n\n    def __enter__(self) -> Self:\n        self.start()\n        return self\n\n    def __exit__(\n        self,\n        exc_type: Optional[Type[BaseException]],\n        exc_val: Optional[BaseException],\n        exc_tb: Optional[TracebackType],\n    ) -> None:\n        self.stop()",
-    """fastapi_14258""": "    ) -> None:\n        \"\"\"\n        Include another `APIRouter` in the same current `APIRouter`.\n\n        Read more about it in the\n        [FastAPI docs for Bigger Applications](https://fastapi.tiangolo.com/tutorial/bigger-applications/).\n\n        ## Example\n\n        ```python\n        from fastapi import APIRouter, FastAPI\n\n        app = FastAPI()\n        internal_router = APIRouter()\n        users_router = APIRouter()\n\n        @users_router.get(\"/users/\")\n        def read_users():\n            return [{\"name\": \"Rick\"}, {\"name\": \"Morty\"}]\n\n        internal_router.include_router(users_router)\n        app.include_router(internal_router)\n        ```\n        \"\"\"\n        if prefix:\n            assert prefix.startswith(\"/\"), \"A path prefix must start with '/'\"\n            assert not prefix.endswith(\"/\"), (\n                \"A path prefix must not end with '/', as the routes will start with '/'\"\n            )\n        else:\n            for r in router.routes:\n                path = getattr(r, \"path\")  # noqa: B009\n                name = getattr(r, \"name\", \"unknown\")\n                if path is not None and not path:\n                    raise FastAPIError(\n                        f\"Prefix and path cannot be both empty (path operation: {name})\"\n                    )\n        if responses is None:\n            responses = {}\n        for route in router.routes:\n            if isinstance(route, APIRoute):\n                combined_responses = {**responses, **route.responses}\n                use_response_class = get_value_or_default(\n                    route.response_class,\n                    router.default_response_class,\n                    default_response_class,\n                    self.default_response_class,\n                )\n                current_tags = []\n                if tags:\n                    current_tags.extend(tags)\n                if route.tags:\n                    current_tags.extend(route.tags)\n                current_dependencies: list[params.Depends] = []\n                if dependencies:\n                    current_dependencies.extend(dependencies)\n                if route.dependencies:\n                    current_dependencies.extend(route.dependencies)\n                current_callbacks = []\n                if callbacks:\n                    current_callbacks.extend(callbacks)\n                if route.callbacks:\n                    current_callbacks.extend(route.callbacks)\n                current_generate_unique_id = get_value_or_default(\n                    route.generate_unique_id_function,\n                    router.generate_unique_id_function,\n                    generate_unique_id_function,\n                    self.generate_unique_id_function,\n                )\n                self.add_api_route(\n                    prefix + route.path,\n                    route.endpoint,\n                    response_model=route.response_model,\n                    status_code=route.status_code,\n                    tags=current_tags,\n",
-    """fastapi_15589""": "def request_params_to_args(\n    fields: Sequence[ModelField],\n    received_params: Mapping[str, Any] | QueryParams | Headers,\n) -> tuple[dict[str, Any], list[Any]]:\n    values: dict[str, Any] = {}\n    errors: list[dict[str, Any]] = []\n\n    if not fields:\n        return values, errors\n\n    first_field = fields[0]\n    fields_to_extract = fields\n    single_not_embedded_field = False\n    default_convert_underscores = True\n    if len(fields) == 1 and lenient_issubclass(\n        first_field.field_info.annotation, BaseModel\n    ):\n        fields_to_extract = get_cached_model_fields(first_field.field_info.annotation)\n        single_not_embedded_field = True\n        # If headers are in a Pydantic model, the way to disable convert_underscores\n        # would be with Header(convert_underscores=False) at the Pydantic model level\n        default_convert_underscores = getattr(\n            first_field.field_info, \"convert_underscores\", True\n        )\n\n    params_to_process: dict[str, Any] = {}\n\n    processed_keys = set()\n\n    for field in fields_to_extract:\n        alias = None\n        if isinstance(received_params, Headers):\n            # Handle fields extracted from a Pydantic Model for a header, each field\n            # doesn't have a FieldInfo of type Header with the default convert_underscores=True\n            convert_underscores = getattr(\n                field.field_info, \"convert_underscores\", default_convert_underscores\n            )\n            if convert_underscores:\n                alias = get_validation_alias(field)\n                if alias == field.name:\n                    alias = alias.replace(\"_\", \"-\")\n        value = _get_multidict_value(field, received_params, alias=alias)\n        if value is not None:\n            params_to_process[get_validation_alias(field)] = value\n        processed_keys.add(alias or get_validation_alias(field))\n\n    for key in received_params.keys():\n        if key not in processed_keys:\n            if isinstance(received_params, (ImmutableMultiDict, Headers)):\n                value = received_params.getlist(key)\n                if isinstance(value, list) and (len(value) == 1):\n                    params_to_process[key] = value[0]\n                else:\n                    params_to_process[key] = value\n            else:\n                params_to_process[key] = received_params.get(key)\n\n    if single_not_embedded_field:\n        field_info = first_field.field_info\n        assert isinstance(field_info, params.Param), (\n            \"Params must be subclasses of Param\"\n        )\n        loc: tuple[str, ...] = (field_info.in_.value,)\n        v_, errors_ = _validate_value_with_model_field(\n            field=first_field, value=params_to_process, values=values, loc=loc\n        )\n        return {first_field.name: v_}, errors_\n\n    for field in fields:\n        value = _get_multidict_value(field, received_params)\n        field_info = field.field_info\n        assert isinstance(field_info, params.Param), (\n            \"Params must be subclasses of Param\"\n        )\n        loc = (field_info.in_.value, get_validation_alias(field))\n        v_, errors_ = _validate_value_with_model_field(\n            field=field, value=value, values=values, loc=loc\n        )\n        if errors_:\n            errors.extend(errors_)\n        else:\n            values[field.name] = v_\n    return values, errors\n\n\ndef is_union_of_base_models(field_type: Any) -> bool:\n",
-    """rich_3894""": "    def __rich__(self) -> Panel:\n        return Panel.fit(\n            Group(*self._render()),\n            title=self.title,\n            border_style=\"scope.border\",\n            padding=(0, 1),\n        )\n\n    def _get_signature(self, name: str, obj: Any) -> Optional[Text]:\n        \"\"\"Get a signature for a callable.\"\"\"\n        try:\n            _signature = str(signature(obj)) + \":\"\n        except ValueError:\n            _signature = \"(...)\"\n        except TypeError:\n            return None\n\n        source_filename: Optional[str] = None\n        try:\n            source_filename = getfile(obj)\n        except (OSError, TypeError):\n            # OSError is raised if obj has no source file, e.g. when defined in REPL.\n            pass\n\n        callable_name = Text(name, style=\"inspect.callable\")\n        if source_filename:\n            callable_name.stylize(f\"link file://{source_filename}\")\n        signature_text = self.highlighter(_signature)\n\n        qualname = name or getattr(obj, \"__qualname__\", name)\n\n        # If obj is a module, there may be classes (which are callable) to display\n        if inspect.isclass(obj):\n            prefix = \"class\"\n        elif inspect.iscoroutinefunction(obj):\n            prefix = \"async def\"",
-}
-ISSUES = {
-    """fastapi_14786""": """ISSUE (fastapi_14786 in fastapi/fastapi at eacbce24c9d2):
-Strip whitespaces from `Authorization` header credentials (RFC 6750 section 2.1).
-Problem: get_authorization_scheme_param preserves leading/trailing whitespace in the credential, so `Authorization: Bearer   xxx` yields credentials `"  xxx"`.
-Fix: return scheme, param.strip().
-Tests: `Other  foobar ` -> ("Other", "foobar"); `Bearer  testtoken ` -> ("Bearer", "testtoken").""",
-    """fastapi_13537""": """ISSUE (fastapi_13537 in fastapi/fastapi at 3b4b5ab8c819):
-Form values with empty strings must be treated as missing (None default), for HTML-form compatibility. Regression from PR #12134.
-Spec: `_get_multidict_value` uses None for both absent values and None defaults. `_extract_form_body` skips None values; a later pass re-adds missing fields from request params, but a form field set to "" is seen as absent, `_get_multidict_value` returns the None default (skipped in pass 1), then pass 2 finds "" in the params and adds it, and validation chokes on "".
-Fix: track already-visited fields instead of relying on the values dict (as `request_params_to_args` already does). Keep the extra-key fix. Correct file only.
-closes #13533""",
-    """rich_3905""": "ISSUE (rich_3905 in Textualize/rich at 96dd4b60e3a7): Disabled Progress must print nothing on non-interactive consoles. Problem: stop() prints unconditionally when non-interactive, leaving a blank line even when disable=True. Fix: gate on disable first (symmetric start/stop). Tests: disabled non-interactive track emits empty string.",
-    """fastapi_14258""": """ISSUE (fastapi_14258 in fastapi/fastapi at e94028ab60d1):
-Show a clear error on attempt to include a router into itself: router.include_router(router) must raise AssertionError with the EXACT message: Cannot include the same APIRouter instance into itself. Did you mean to include a different router?
-(The test uses match= on this exact string.)""",
-    """fastapi_15589""": """ISSUE (fastapi_15589 in fastapi/fastapi at 22b02e26f9e8):
-With convert_underscores=True (the default), underscore headers must NOT be accepted: only hyphen-separated header names validate; apps opt into underscores via convert_underscores=False.
-Behavior: GET /header-requires-hyphen with both x-user-id=hyphenated-value AND x_user_id=underscore-value -> 200 {"x_user_id": "hyphenated-value"} (hyphen wins); with only x_user_id=underscore-value -> 422 with detail loc ["header", "x_user_id"].
-Non-empty real fix required.""",
-    """rich_3894""": "ISSUE (rich_3894 in Textualize/rich at 4d6d631a3d2d): inspect() crashes on unusual __qualname__ (non-str, e.g. lru_cache + __slots__). Fix: isinstance check, fall back to __name__ then name. Tests: test_qualname_in_slots passes without exception.",
-}
-CONTRACT = """OUTPUT CONTRACT (follow exactly):
-- Output edit blocks only: no prose, no fences, no explanation.
-- Each block has exactly this shape:
-FILE: <exact repo-relative path>
-<<<<<< SEARCH
-<exact verbatim lines copied from LOCALIZED CODE>
-======
-<replacement lines>
->>>>>>
-- SEARCH must occur in the target file byte-for-byte exactly once. Keep SEARCH minimal but unique (include enough surrounding context).
-- Multiple SEARCH/======/>>>>>> pairs allowed under one FILE: header (one pair per hunk); every pair is matched independently, all must match.
-- Minimal fix only.
-"""
-ALLOW = {
-    """fastapi_14786""": ["""fastapi/security/utils.py"""],
-    """fastapi_13537""": ["""fastapi/dependencies/utils.py"""],
-    """rich_3905""": ["rich/progress.py"],
-    """fastapi_14258""": ["""fastapi/routing.py"""],
-    """fastapi_15589""": ["""fastapi/dependencies/utils.py"""],
-    """rich_3894""": ["rich/_inspect.py"],
-}
-PROMPTS = {}
-for _pid in ISSUES:
-    PROMPTS[_pid] = "You are an expert Python engineer. Minimal fix only.\n\n" + ISSUES[_pid] + "\n\nLOCALIZED CODE (verbatim from the base commit; SEARCH blocks must be copied from here byte-for-byte):\n" + SLICES[_pid] + "\n" + CONTRACT
+# REQUESTS HALVES A HARNESS-FIT PROBE (M739 7 tasks, M739 Thread B): model-free, b3pool-class vehicle.
+# No rail, no secrets, no model calls. Deterministic: same tarball + same diffs = same result.
+# Per task: TEST-APPLY (expect RC=0) -> scoped pytest (BASE-FAIL-PROOF + BASE-SUMMARY) -> FIX-APPLY (RC=0) -> COMPILE -> TEST-RESULT.
+# Terminal apparatus assert: every task emits exactly one TEST-RESULT line (M662). Results + per-pid files in OUT_DIR (/tmp/duck6_out).
+import os, subprocess, urllib.request, base64
+OUT_DIR = "/tmp/duck6_out"
+os.makedirs(OUT_DIR, exist_ok=True)
+_seen_testresult = {}
+_seen_base = {}
 TASKS = {
-    """fastapi_14786""": {"repo": """fastapi/fastapi""", "base": """eacbce24c9d299c6a28110d9fc8ac50f53cddb08""", "test_patch": """--- a/tests/test_security_http_base.py
-+++ b/tests/test_security_http_base.py
-@@ -21,6 +21,12 @@ def test_security_http_base():
-     assert response.json() == {"scheme": "Other", "credentials": "foobar"}
- 
- 
-+def test_security_http_base_with_whitespaces():
-+    response = client.get("/users/me", headers={"Authorization": "Other  foobar "})
-+    assert response.status_code == 200, response.text
-+    assert response.json() == {"scheme": "Other", "credentials": "foobar"}
-+
-+
- def test_security_http_base_no_credentials():
-     response = client.get("/users/me")
-     assert response.status_code == 401, response.text
---- a/tests/test_security_oauth2_authorization_code_bearer.py
-+++ b/tests/test_security_oauth2_authorization_code_bearer.py
-@@ -37,6 +37,12 @@ def test_token():
-     assert response.json() == {"token": "testtoken"}
- 
- 
-+def test_token_with_whitespaces():
-+    response = client.get("/items", headers={"Authorization": "Bearer  testtoken "})
-+    assert response.status_code == 200, response.text
-+    assert response.json() == {"token": "testtoken"}
-+
-+
- def test_openapi_schema():
-     response = client.get("/openapi.json")
-     assert response.status_code == 200, response.text"""},
-    """fastapi_13537""": {"repo": """fastapi/fastapi""", "base": """3b4b5ab8c819dce27fbaf0aa0a9c74b7f3255ec0""", "test_patch": """--- a/tests/test_form_default.py
-+++ b/tests/test_form_default.py
-@@ -0,0 +1,35 @@
-+from typing import Optional
-+
-+from fastapi import FastAPI, File, Form
-+from starlette.testclient import TestClient
-+from typing_extensions import Annotated
-+
-+app = FastAPI()
-+
-+
-+@app.post("/urlencoded")
-+async def post_url_encoded(age: Annotated[Optional[int], Form()] = None):
-+    return age
-+
-+
-+@app.post("/multipart")
-+async def post_multi_part(
-+    age: Annotated[Optional[int], Form()] = None,
-+    file: Annotated[Optional[bytes], File()] = None,
-+):
-+    return {"file": file, "age": age}
-+
-+
-+client = TestClient(app)
-+
-+
-+def test_form_default_url_encoded():
-+    response = client.post("/urlencoded", data={"age": ""})
-+    assert response.status_code == 200
-+    assert response.text == "null"
-+
-+
-+def test_form_default_multi_part():
-+    response = client.post("/multipart", data={"age": ""})
-+    assert response.status_code == 200
-+    assert response.json() == {"file": None, "age": None}"""},
-    """rich_3905""": {"repo": "Textualize/rich", "base": "96dd4b60e3a7", "test_patch": "diff --git a/tests/test_progress.py b/tests/test_progress.py\nindex 0be683c3ea..20f426a4cd 100644\n--- a/tests/test_progress.py\n+++ b/tests/test_progress.py\n@@ -565,6 +565,30 @@ def test_no_output_if_progress_is_disabled() -> None:\n     assert result == expected\n \n \n+def test_no_output_if_progress_is_disabled_non_interactive() -> None:\n+    console = Console(\n+        file=io.StringIO(),\n+        force_interactive=False,\n+        width=60,\n+        color_system=\"truecolor\",\n+        legacy_windows=False,\n+        _environ={},\n+    )\n+    progress = Progress(\n+        console=console,\n+        disable=True,\n+    )\n+    test = [\"foo\", \"bar\", \"baz\"]\n+    expected_values = iter(test)\n+    with progress:\n+        for value in progress.track(test, description=\"test\"):\n+            assert value == next(expected_values)\n+    result = console.file.getvalue()\n+    print(repr(result))\n+    expected = \"\"\n+    assert result == expected\n+\n+\n def test_open() -> None:\n     console = Console(\n         file=io.StringIO(),\n"},
-    """fastapi_14258""": {"repo": """fastapi/fastapi""", "base": """e94028ab60d18080810910352bc9129e8046c92d""", "test_patch": """--- a/tests/test_router_circular_import.py
-+++ b/tests/test_router_circular_import.py
-@@ -0,0 +1,12 @@
-+import pytest
-+from fastapi import APIRouter
-+
-+
-+def test_router_circular_import():
-+    router = APIRouter()
-+
-+    with pytest.raises(
-+        AssertionError,
-+        match="Cannot include the same APIRouter instance into itself. Did you mean to include a different router?",
-+    ):
-+        router.include_router(router)"""},
-    """fastapi_15589""": {"repo": """fastapi/fastapi""", "base": """22b02e26f9e8c7e32bd8266e2b0ebe8bb3a0db2b""", "test_patch": """--- a/tests/test_query_cookie_header_model_extra_params.py
-+++ b/tests/test_query_cookie_header_model_extra_params.py
-@@ -11,6 +11,10 @@ class Model(BaseModel):
-     model_config = {"extra": "allow"}
- 
- 
-+class AuthHeaders(BaseModel):
-+    x_user_id: str
-+
-+
- @app.get("/query")
- async def query_model_with_extra(data: Model = Query()):
-     return data
-@@ -26,6 +30,11 @@ async def cookies_model_with_extra(data: Model = Cookie()):
-     return data
- 
- 
-+@app.get("/header-requires-hyphen")
-+async def header_model_requires_hyphen(data: AuthHeaders = Header()):
-+    return data
-+
-+
- def test_query_pass_extra_list():
-     client = TestClient(app)
-     resp = client.get(
-@@ -91,6 +100,32 @@ def test_header_pass_extra_single():
-     assert resp_json["param2"] == "456"
- 
- 
-+def test_header_model_prefers_hyphenated_header_with_convert_underscores():
-+    client = TestClient(app)
-+
-+    resp = client.get(
-+        "/header-requires-hyphen",
-+        headers=[
-+            ("x-user-id", "hyphenated-value"),
-+            ("x_user_id", "underscore-value"),
-+        ],
-+    )
-+
-+    assert resp.status_code == 200
-+    assert resp.json() == {"x_user_id": "hyphenated-value"}
-+
-+
-+def test_header_model_rejects_underscore_header_with_convert_underscores():
-+    client = TestClient(app)
-+
-+    resp = client.get(
-+        "/header-requires-hyphen", headers={"x_user_id": "underscore-value"}
-+    )
-+
-+    assert resp.status_code == 422
-+    assert resp.json()["detail"][0]["loc"] == ["header", "x_user_id"]
-+
-+
- def test_cookie_pass_extra_list():
-     client = TestClient(app)
-     client.cookies = ["""},
-    """rich_3894""": {"repo": "Textualize/rich", "base": "4d6d631a3d2d", "test_patch": "diff --git a/tests/test_inspect.py b/tests/test_inspect.py\nindex 3f6e5b9fe8..d6972fb5ed 100644\n--- a/tests/test_inspect.py\n+++ b/tests/test_inspect.py\n@@ -404,6 +404,19 @@ class Thing:\n     assert render(module, methods=True) == expected\n \n \n+def test_qualname_in_slots():\n+    from functools import lru_cache\n+\n+    @lru_cache\n+    class Klass:\n+        __slots__ = (\"__qualname__\",)\n+\n+    try:\n+        inspect(Klass)\n+    except Exception as e:\n+        assert False, f\"Class with __qualname__ in __slots__ shouldn't raise {e}\"\n+\n+\n @pytest.mark.parametrize(\n     \"special_character,expected_replacement\",\n     (\n"},
+  "requests_7505": {"repo":"psf/requests","base":"6f205ff422bccd5e4c4fc0b64c5f3e7df5181db6","pytest":"tests/test_requests.py","k":"","src":"src/requests/_types.py","fixB64":"LS0tIGEvc3JjL3JlcXVlc3RzL190eXBlcy5weQorKysgYi9zcmMvcmVxdWVzdHMvX3R5cGVzLnB5CkBAIC0yOSw2ICsyOSwxMSBAQCBjbGFzcyBTdXBwb3J0c1JlYWQoUHJvdG9jb2xbX1RfY29dKToKICAgICBkZWYgcmVhZChzZWxmLCBsZW5ndGg6IGludCA9IC4uLiwgLykgLT4gX1RfY286IC4uLgogCiAKK2RlZiBoYXNfcmVhZChvYmo6IEFueSkgLT4gVHlwZUlzW1N1cHBvcnRzUmVhZFtzdHIgfCBieXRlc11dOgorICAgICIiIkNoZWNrIGlmIG9iaiBzdXBwb3J0cyByZWFkLCBpbmNsdWRpbmcgX19nZXRhdHRyX18gYmFzZWQgcHJveGllcy4iIiIKKyAgICByZXR1cm4gaXNpbnN0YW5jZShvYmosIFN1cHBvcnRzUmVhZCkgb3IgaGFzYXR0cihvYmosICJyZWFkIikKKworCiBAcnVudGltZV9jaGVja2FibGUKIGNsYXNzIFN1cHBvcnRzSXRlbXMoUHJvdG9jb2xbX0tUX2NvLCBfVlRfY29dKToKICAgICBkZWYgaXRlbXMoc2VsZikgLT4gSXRlcmFibGVbdHVwbGVbX0tUX2NvLCBfVlRfY29dXTogLi4uCi0tLSBhL3NyYy9yZXF1ZXN0cy9tb2RlbHMucHkKKysrIGIvc3JjL3JlcXVlc3RzL21vZGVscy5weQpAQCAtMzUsOCArMzUsOCBAQAogZnJvbSB1cmxsaWIzLmZpbGVwb3N0IGltcG9ydCBlbmNvZGVfbXVsdGlwYXJ0X2Zvcm1kYXRhCiBmcm9tIHVybGxpYjMudXRpbCBpbXBvcnQgcGFyc2VfdXJsCiAKK2Zyb20gLiBpbXBvcnQgX3R5cGVzIGFzIF90CiBmcm9tIC5faW50ZXJuYWxfdXRpbHMgaW1wb3J0IHRvX25hdGl2ZV9zdHJpbmcsIHVuaWNvZGVfaXNfYXNjaWkKLWZyb20gLl90eXBlcyBpbXBvcnQgU3VwcG9ydHNSZWFkIGFzIF9TdXBwb3J0c1JlYWQKIGZyb20gLmF1dGggaW1wb3J0IEhUVFBCYXNpY0F1dGgKIGZyb20gLmNvbXBhdCBpbXBvcnQgKAogICAgIEpTT05EZWNvZGVFcnJvciwKQEAgLTg3LDcgKzg3LDYgQEAKIAogICAgIGZyb20gdHlwaW5nX2V4dGVuc2lvbnMgaW1wb3J0IFNlbGYKIAotICAgIGZyb20gLiBpbXBvcnQgX3R5cGVzIGFzIF90CiAgICAgZnJvbSAuYWRhcHRlcnMgaW1wb3J0IEhUVFBBZGFwdGVyCiAgICAgZnJvbSAuY29va2llcyBpbXBvcnQgUmVxdWVzdHNDb29raWVKYXIKIApAQCAtMTYxLDcgKzE2MCw3IEBAIGRlZiBfZW5jb2RlX3BhcmFtcygKIAogICAgICAgICBpZiBpc2luc3RhbmNlKGRhdGEsIChzdHIsIGJ5dGVzKSk6CiAgICAgICAgICAgICByZXR1cm4gZGF0YQotICAgICAgICBlbGlmIGlzaW5zdGFuY2UoZGF0YSwgX1N1cHBvcnRzUmVhZCk6CisgICAgICAgIGVsaWYgX3QuaGFzX3JlYWQoZGF0YSk6CiAgICAgICAgICAgICByZXR1cm4gZGF0YQogICAgICAgICBlbGlmIGhhc2F0dHIoZGF0YSwgIl9faXRlcl9fIik6CiAgICAgICAgICAgICByZXN1bHQ6IGxpc3RbdHVwbGVbYnl0ZXMsIGJ5dGVzXV0gPSBbXQpAQCAtMjM2LDkgKzIzNSw3IEBAIGRlZiBfZW5jb2RlX2ZpbGVzKAogCiAgICAgICAgICAgICBpZiBpc2luc3RhbmNlKGZwLCAoc3RyLCBieXRlcywgYnl0ZWFycmF5KSk6CiAgICAgICAgICAgICAgICAgZmRhdGEgPSBmcAotICAgICAgICAgICAgIyBkYXRhIHRoYXQgcHJveGllcyBhdHRyaWJ1dGVzIHRvIHVuZGVybHlpbmcgb2JqZWN0cyBuZWVkcyBoYXNhdHRyCi0gICAgICAgICAgICAjIGRlZmVuc2l2ZSBjaGVjayBmb3IgdW50eXBlZCBjYWxsZXJzCi0gICAgICAgICAgICBlbGlmIGlzaW5zdGFuY2UoZnAsIF9TdXBwb3J0c1JlYWQpIG9yIGhhc2F0dHIoZnAsICJyZWFkIik6CisgICAgICAgICAgICBlbGlmIF90Lmhhc19yZWFkKGZwKToKICAgICAgICAgICAgICAgICBmZGF0YSA9IGZwLnJlYWQoKQogICAgICAgICAgICAgZWxpZiBmcCBpcyBOb25lOiAgIyBkZWZlbnNpdmUgY2hlY2sgZm9yIHVudHlwZWQgY2FsbGVycwogICAgICAgICAgICAgICAgIGNvbnRpbnVlCkBAIC02NDEsNyArNjM4LDcgQEAgZGVmIHByZXBhcmVfYm9keSgKICAgICAgICAgICAgIGVsc2U6CiAgICAgICAgICAgICAgICAgaWYgcmF3X2RhdGE6CiAgICAgICAgICAgICAgICAgICAgIGJvZHkgPSBzZWxmLl9lbmNvZGVfcGFyYW1zKHJhd19kYXRhKQotICAgICAgICAgICAgICAgICAgICBpZiBpc2luc3RhbmNlKGRhdGEsIGJhc2VzdHJpbmcpIG9yIGlzaW5zdGFuY2UoZGF0YSwgX1N1cHBvcnRzUmVhZCk6CisgICAgICAgICAgICAgICAgICAgIGlmIGlzaW5zdGFuY2UoZGF0YSwgYmFzZXN0cmluZykgb3IgX3QuaGFzX3JlYWQoZGF0YSk6CiAgICAgICAgICAgICAgICAgICAgICAgICBjb250ZW50X3R5cGUgPSBOb25lCiAgICAgICAgICAgICAgICAgICAgIGVsc2U6CiAgICAgICAgICAgICAgICAgICAgICAgICBjb250ZW50X3R5cGUgPSAiYXBwbGljYXRpb24veC13d3ctZm9ybS11cmxlbmNvZGVkIg==","testB64":"LS0tIGEvdGVzdHMvdGVzdF9yZXF1ZXN0cy5weQorKysgYi90ZXN0cy90ZXN0X3JlcXVlc3RzLnB5CkBAIC0xMDk4LDYgKzEwOTgsMjEgQEAgZGVmIHRlc3RfcG9zdF9uYW1lZF90ZW1wZmlsZShzZWxmLCBodHRwYmluKToKICAgICAgICAgYXNzZXJ0IHIuc3RhdHVzX2NvZGUgPT0gMjAwCiAgICAgICAgIGFzc2VydCByLmpzb24oKVsiZmlsZXMiXVsiZmlsZSJdID09ICJuYW1lZCB0ZW1wIGZpbGUgY29udGVudHNcbiIKIAorICAgIGRlZiB0ZXN0X3Bvc3RfZ2V0YXR0cl9wcm94eV9yZWFkX29ubHkoc2VsZiwgaHR0cGJpbik6CisKKyAgICAgICAgY2xhc3MgUmVhZFByb3h5OgorICAgICAgICAgICAgZGVmIF9faW5pdF9fKHNlbGYpOgorICAgICAgICAgICAgICAgIHNlbGYuX2ZpbGUgPSBpby5CeXRlc0lPKGIic3RyZWFtZWQgYm9keSIpCisKKyAgICAgICAgICAgIGRlZiBfX2dldGF0dHJfXyhzZWxmLCBuYW1lKToKKyAgICAgICAgICAgICAgICBpZiBuYW1lID09ICJfX2l0ZXJfXyI6CisgICAgICAgICAgICAgICAgICAgIHJhaXNlIEF0dHJpYnV0ZUVycm9yKG5hbWUpCisgICAgICAgICAgICAgICAgcmV0dXJuIGdldGF0dHIoc2VsZi5fZmlsZSwgbmFtZSkKKworICAgICAgICByID0gcmVxdWVzdHMucG9zdChodHRwYmluKCJwb3N0IiksIGRhdGE9UmVhZFByb3h5KCkpCisgICAgICAgIGFzc2VydCByLnN0YXR1c19jb2RlID09IDIwMAorICAgICAgICBhc3NlcnQgci5qc29uKClbImRhdGEiXSA9PSAic3RyZWFtZWQgYm9keSIKKwogICAgIEBweXRlc3QubWFyay5wYXJhbWV0cml6ZSgKICAgICAgICAgImRhdGEiLAogICAgICAgICAo"},
+  "requests_7502": {"repo":"psf/requests","base":"661970d171d9c3e12e4c789c4768db647d8c4da0","pytest":"tests/test_requests.py","k":"","src":"src/requests/models.py","fixB64":"LS0tIGEvc3JjL3JlcXVlc3RzL21vZGVscy5weQorKysgYi9zcmMvcmVxdWVzdHMvbW9kZWxzLnB5CkBAIC0yMzYsNyArMjM2LDkgQEAgZGVmIF9lbmNvZGVfZmlsZXMoCiAKICAgICAgICAgICAgIGlmIGlzaW5zdGFuY2UoZnAsIChzdHIsIGJ5dGVzLCBieXRlYXJyYXkpKToKICAgICAgICAgICAgICAgICBmZGF0YSA9IGZwCi0gICAgICAgICAgICBlbGlmIGlzaW5zdGFuY2UoZnAsIF9TdXBwb3J0c1JlYWQpOiAgIyBkZWZlbnNpdmUgY2hlY2sgZm9yIHVudHlwZWQgY2FsbGVycworICAgICAgICAgICAgIyBkYXRhIHRoYXQgcHJveGllcyBhdHRyaWJ1dGVzIHRvIHVuZGVybHlpbmcgb2JqZWN0cyBuZWVkcyBoYXNhdHRyCisgICAgICAgICAgICAjIGRlZmVuc2l2ZSBjaGVjayBmb3IgdW50eXBlZCBjYWxsZXJzCisgICAgICAgICAgICBlbGlmIGlzaW5zdGFuY2UoZnAsIF9TdXBwb3J0c1JlYWQpIG9yIGhhc2F0dHIoZnAsICJyZWFkIik6CiAgICAgICAgICAgICAgICAgZmRhdGEgPSBmcC5yZWFkKCkKICAgICAgICAgICAgIGVsaWYgZnAgaXMgTm9uZTogICMgZGVmZW5zaXZlIGNoZWNrIGZvciB1bnR5cGVkIGNhbGxlcnMKICAgICAgICAgICAgICAgICBjb250aW51ZQ==","testB64":"LS0tIGEvdGVzdHMvdGVzdF9yZXF1ZXN0cy5weQorKysgYi90ZXN0cy90ZXN0X3JlcXVlc3RzLnB5CkBAIC0xMDg3LDYgKzEwODcsMTcgQEAgZGVmIHRlc3RfZGlmZmVyZW50X2VuY29kaW5nc19kb250X2JyZWFrX3Bvc3Qoc2VsZiwgaHR0cGJpbik6CiAgICAgICAgICAgICApCiAgICAgICAgIGFzc2VydCByLnN0YXR1c19jb2RlID09IDIwMAogCisgICAgZGVmIHRlc3RfcG9zdF9uYW1lZF90ZW1wZmlsZShzZWxmLCBodHRwYmluKToKKyAgICAgICAgd2l0aCB0ZW1wZmlsZS5OYW1lZFRlbXBvcmFyeUZpbGUobW9kZT0idysiKSBhcyBmOgorICAgICAgICAgICAgZi53cml0ZSgibmFtZWQgdGVtcCBmaWxlIGNvbnRlbnRzXG4iKQorICAgICAgICAgICAgZi5zZWVrKDApCisgICAgICAgICAgICByID0gcmVxdWVzdHMucG9zdCgKKyAgICAgICAgICAgICAgICBodHRwYmluKCJwb3N0IiksCisgICAgICAgICAgICAgICAgZmlsZXM9eyJmaWxlIjogZn0sCisgICAgICAgICAgICApCisgICAgICAgIGFzc2VydCByLnN0YXR1c19jb2RlID09IDIwMAorICAgICAgICBhc3NlcnQgci5qc29uKClbImZpbGVzIl1bImZpbGUiXSA9PSAibmFtZWQgdGVtcCBmaWxlIGNvbnRlbnRzXG4iCisKICAgICBAcHl0ZXN0Lm1hcmsucGFyYW1ldHJpemUoCiAgICAgICAgICJkYXRhIiwKICAgICAgICAgKA=="},
+  "requests_7433": {"repo":"psf/requests","base":"0b401c76b6e80a4eecf3c690085b2553f6e261ca","pytest":"tests/test_requests.py","k":"","src":"src/requests/models.py","fixB64":"LS0tIGEvc3JjL3JlcXVlc3RzL21vZGVscy5weQorKysgYi9zcmMvcmVxdWVzdHMvbW9kZWxzLnB5CkBAIC01OTYsOSArNTk2LDkgQEAgZGVmIHByZXBhcmVfYm9keSgKICAgICAgICAgICAgIGlmIG5vdCBpc2luc3RhbmNlKGJvZHksIGJ5dGVzKToKICAgICAgICAgICAgICAgICBib2R5ID0gYm9keS5lbmNvZGUoInV0Zi04IikKIAotICAgICAgICBpZiBpc2luc3RhbmNlKGRhdGEsIEl0ZXJhYmxlKSBhbmQgbm90IGlzaW5zdGFuY2UoCi0gICAgICAgICAgICBkYXRhLCAoc3RyLCBieXRlcywgbGlzdCwgdHVwbGUsIE1hcHBpbmcpCi0gICAgICAgICk6CisgICAgICAgICMgZGF0YSB0aGF0IHByb3hpZXMgYXR0cmlidXRlcyB0byB1bmRlcmx5aW5nIG9iamVjdHMgbmVlZHMgaGFzYXR0cgorICAgICAgICBpc19pdGVyYWJsZSA9IGlzaW5zdGFuY2UoZGF0YSwgSXRlcmFibGUpIG9yIGhhc2F0dHIoZGF0YSwgIl9faXRlcl9fIikKKyAgICAgICAgaWYgaXNfaXRlcmFibGUgYW5kIG5vdCBpc2luc3RhbmNlKGRhdGEsIChzdHIsIGJ5dGVzLCBsaXN0LCB0dXBsZSwgTWFwcGluZykpOgogICAgICAgICAgICAgdHJ5OgogICAgICAgICAgICAgICAgIGxlbmd0aCA9IHN1cGVyX2xlbihkYXRhKQogICAgICAgICAgICAgZXhjZXB0IChUeXBlRXJyb3IsIEF0dHJpYnV0ZUVycm9yLCBVbnN1cHBvcnRlZE9wZXJhdGlvbik6","testB64":"LS0tIGEvdGVzdHMvdGVzdF9yZXF1ZXN0cy5weQorKysgYi90ZXN0cy90ZXN0X3JlcXVlc3RzLnB5CkBAIC0yMDczLDYgKzIwNzMsMjEgQEAgZGVmIF9faXRlcl9fKHNlbGYpOgogCiAgICAgICAgIGFzc2VydCAiVW5hYmxlIHRvIHJld2luZCByZXF1ZXN0IGJvZHkiIGluIHN0cihlKQogCisgICAgZGVmIHRlc3RfZ2V0YXR0cl9wcm94eV9zdHJlYW1fZm9sbG93c19yZWRpcmVjdChzZWxmLCBodHRwYmluKToKKyAgICAgICAgIiIiRW5zdXJlIHN0cmVhbSB3cmFwcGVycyB0aGF0IGRvbid0IGltcGxlbWVudCBfX2l0ZXJfXyBkaXJlY3RseSBhcmUgc3RpbGwgZGV0ZWN0ZWQuIiIiCisKKyAgICAgICAgY2xhc3MgQXR0clByb3h5OgorICAgICAgICAgICAgZGVmIF9faW5pdF9fKHNlbGYpOgorICAgICAgICAgICAgICAgIHNlbGYuX2ZpbGUgPSBpby5CeXRlc0lPKGIiZGF0YSIpCisKKyAgICAgICAgICAgIGRlZiBfX2dldGF0dHJfXyhzZWxmLCBuYW1lKToKKyAgICAgICAgICAgICAgICByZXR1cm4gZ2V0YXR0cihzZWxmLl9maWxlLCBuYW1lKQorCisgICAgICAgIHIgPSByZXF1ZXN0cy5wb3N0KAorICAgICAgICAgICAgaHR0cGJpbigicmVkaXJlY3QtdG8/dXJsPS9wb3N0JnN0YXR1c19jb2RlPTMwNyIpLCBkYXRhPUF0dHJQcm94eSgpCisgICAgICAgICkKKyAgICAgICAgYXNzZXJ0IHIuanNvbigpWyJkYXRhIl0gPT0gImRhdGEiCisKICAgICBkZWYgX3BhdGNoX2FkYXB0ZXJfZ3ppcHBlZF9yZWRpcmVjdChzZWxmLCBzZXNzaW9uLCB1cmwpOgogICAgICAgICBhZGFwdGVyID0gc2Vzc2lvbi5nZXRfYWRhcHRlcih1cmw9dXJsKQogICAgICAgICBvcmdfYnVpbGRfcmVzcG9uc2UgPSBhZGFwdGVyLmJ1aWxkX3Jlc3BvbnNl"},
+  "requests_7427": {"repo":"psf/requests","base":"b684dcb9bbf3aa557d1238e72062c4a29737dd1c","pytest":"tests/test_utils.py","k":"test_should_bypass_proxies_no_proxy_domain_boundary","src":"src/requests/utils.py","fixB64":"LS0tIGEvc3JjL3JlcXVlc3RzL3V0aWxzLnB5CisrKyBiL3NyYy9yZXF1ZXN0cy91dGlscy5weQpAQCAtODUxLDkgKzg1MSwxMSBAQCBkZWYgZ2V0X3Byb3h5KGtleTogc3RyKSAtPiBzdHIgfCBOb25lOgogICAgICAgICAgICAgICAgIGhvc3Rfd2l0aF9wb3J0ICs9IGYiOntwYXJzZWQucG9ydH0iCiAKICAgICAgICAgICAgIGZvciBob3N0IGluIG5vX3Byb3h5X2hvc3RzOgorICAgICAgICAgICAgICAgIGhvc3QgPSBob3N0LmxzdHJpcCgiLiIpCisgICAgICAgICAgICAgICAgaWYgaG9zdG5hbWUgPT0gaG9zdCBvciBob3N0X3dpdGhfcG9ydCA9PSBob3N0OgorICAgICAgICAgICAgICAgICAgICByZXR1cm4gVHJ1ZQorICAgICAgICAgICAgICAgIGhvc3QgPSAiLiIgKyBob3N0CiAgICAgICAgICAgICAgICAgaWYgaG9zdG5hbWUuZW5kc3dpdGgoaG9zdCkgb3IgaG9zdF93aXRoX3BvcnQuZW5kc3dpdGgoaG9zdCk6Ci0gICAgICAgICAgICAgICAgICAgICMgVGhlIFVSTCBkb2VzIG1hdGNoIHNvbWV0aGluZyBpbiBub19wcm94eSwgc28gd2UgZG9uJ3Qgd2FudAotICAgICAgICAgICAgICAgICAgICAjIHRvIGFwcGx5IHRoZSBwcm94aWVzIG9uIHRoaXMgVVJMLgogICAgICAgICAgICAgICAgICAgICByZXR1cm4gVHJ1ZQogCiAgICAgd2l0aCBzZXRfZW52aXJvbigibm9fcHJveHkiLCBub19wcm94eV9hcmcpOg==","testB64":"LS0tIGEvdGVzdHMvdGVzdF91dGlscy5weQorKysgYi90ZXN0cy90ZXN0X3V0aWxzLnB5CkBAIC04NDQsNiArODQ0LDI5IEBAIGRlZiB0ZXN0X3Nob3VsZF9ieXBhc3NfcHJveGllc19ub19wcm94eSh1cmwsIGV4cGVjdGVkLCBtb25rZXlwYXRjaCk6CiAgICAgYXNzZXJ0IHNob3VsZF9ieXBhc3NfcHJveGllcyh1cmwsIG5vX3Byb3h5PW5vX3Byb3h5KSA9PSBleHBlY3RlZAogCiAKK0BweXRlc3QubWFyay5wYXJhbWV0cml6ZSgKKyAgICAidXJsLCBleHBlY3RlZCIsCisgICAgKAorICAgICAgICAoImh0dHA6Ly9sb2NhbGhvc3QvIiwgVHJ1ZSksCisgICAgICAgICgiaHR0cDovL2Fub3RoZXJkb21haW4uY29tOjg4ODgvIiwgVHJ1ZSksCisgICAgICAgICgiaHR0cDovL25ld2RvbWFpbi5jb206MTIzNC8iLCBUcnVlKSwKKyAgICAgICAgKCJodHRwOi8vd3d3Lm5ld2RvbWFpbi5jb206MTIzNC8iLCBUcnVlKSwKKyAgICAgICAgKCJodHRwOi8vZm9vLmQuby50LyIsIFRydWUpLAorICAgICAgICAoImh0dHA6Ly9kLm8udC8iLCBUcnVlKSwKKyAgICAgICAgKCJodHRwOi8vcHJlbG9jYWxob3N0LyIsIEZhbHNlKSwKKyAgICAgICAgKCJodHRwOi8vbmV3ZG9tYWluLmNvbS8iLCBGYWxzZSksCisgICAgICAgICgiaHR0cDovL25ld2RvbWFpbi5jb206MTIzNS8iLCBGYWxzZSksCisgICAgKSwKKykKK2RlZiB0ZXN0X3Nob3VsZF9ieXBhc3NfcHJveGllc19ub19wcm94eV9kb21haW5fYm91bmRhcnkodXJsLCBleHBlY3RlZCk6CisgICAgIiIiRW5zdXJlIG5vX3Byb3h5IG1hdGNoaW5nIHJlc3BlY3RzIGRvbWFpbiBib3VuZGFyaWVzIGFuZCBkb2VzIG5vdAorICAgIGdyZWVkaWx5IG1hdGNoIGRvbWFpbnMgdGhhdCBtZXJlbHkgZW5kc3dpdGggdGhlIG5vX3Byb3h5IGVudHJ5LgorICAgIFNlZSBDUHl0aG9uIGJwby0zOTA1Ny4KKyAgICAiIiIKKyAgICBub19wcm94eSA9ICJsb2NhbGhvc3QsIGFub3RoZXJkb21haW4uY29tLCBuZXdkb21haW4uY29tOjEyMzQsIC5kLm8udCIKKyAgICBhc3NlcnQgc2hvdWxkX2J5cGFzc19wcm94aWVzKHVybCwgbm9fcHJveHk9bm9fcHJveHkpID09IGV4cGVjdGVkCisKKwogQHB5dGVzdC5tYXJrLnNraXBpZihvcy5uYW1lICE9ICJudCIsIHJlYXNvbj0iVGVzdCBvbmx5IG9uIFdpbmRvd3MiKQogQHB5dGVzdC5tYXJrLnBhcmFtZXRyaXplKAogICAgICJ1cmwsIGV4cGVjdGVkLCBvdmVycmlkZSIs"},
+  "requests_7315": {"repo":"psf/requests","base":"6360477c52303c9445b45fa8744b02d05a2f0905","pytest":"tests/test_adapters.py","k":"test_request_url_handles_leading_path_separators","src":"src/requests/adapters.py","fixB64":"LS0tIGEvc3JjL3JlcXVlc3RzL2FkYXB0ZXJzLnB5CisrKyBiL3NyYy9yZXF1ZXN0cy9hZGFwdGVycy5weQpAQCAtNTQ1LDggKzU0NSw2IEBAIGRlZiByZXF1ZXN0X3VybChzZWxmLCByZXF1ZXN0LCBwcm94aWVzKToKICAgICAgICAgICAgIHVzaW5nX3NvY2tzX3Byb3h5ID0gcHJveHlfc2NoZW1lLnN0YXJ0c3dpdGgoInNvY2tzIikKIAogICAgICAgICB1cmwgPSByZXF1ZXN0LnBhdGhfdXJsCi0gICAgICAgIGlmIHVybC5zdGFydHN3aXRoKCIvLyIpOiAgIyBEb24ndCBjb25mdXNlIHVybGxpYjMKLSAgICAgICAgICAgIHVybCA9IGYiL3t1cmwubHN0cmlwKCcvJyl9IgogCiAgICAgICAgIGlmIGlzX3Byb3hpZWRfaHR0cF9yZXF1ZXN0IGFuZCBub3QgdXNpbmdfc29ja3NfcHJveHk6CiAgICAgICAgICAgICB1cmwgPSB1cmxkZWZyYWdhdXRoKHJlcXVlc3QudXJsKQ==","testB64":"LS0tIGEvdGVzdHMvdGVzdF9hZGFwdGVycy5weQorKysgYi90ZXN0cy90ZXN0X2FkYXB0ZXJzLnB5CkBAIC0xLDggKzEsOCBAQAogaW1wb3J0IHJlcXVlc3RzLmFkYXB0ZXJzCiAKIAotZGVmIHRlc3RfcmVxdWVzdF91cmxfdHJpbXNfbGVhZGluZ19wYXRoX3NlcGFyYXRvcnMoKToKK2RlZiB0ZXN0X3JlcXVlc3RfdXJsX2hhbmRsZXNfbGVhZGluZ19wYXRoX3NlcGFyYXRvcnMoKToKICAgICAiIiJTZWUgYWxzbyBodHRwczovL2dpdGh1Yi5jb20vcHNmL3JlcXVlc3RzL2lzc3Vlcy82NjQzLiIiIgogICAgIGEgPSByZXF1ZXN0cy5hZGFwdGVycy5IVFRQQWRhcHRlcigpCiAgICAgcCA9IHJlcXVlc3RzLlJlcXVlc3QobWV0aG9kPSJHRVQiLCB1cmw9Imh0dHA6Ly8xMjcuMC4wLjE6MTAwMDAvL3Y6aCIpLnByZXBhcmUoKQotICAgIGFzc2VydCAiL3Y6aCIgPT0gYS5yZXF1ZXN0X3VybChwLCB7fSkKKyAgICBhc3NlcnQgIi8vdjpoIiA9PSBhLnJlcXVlc3RfdXJsKHAsIHt9KQ=="},
+  "requests_7328": {"repo":"psf/requests","base":"cbce031327be4f1b4b5fd041ff4dcaa8efa2ce53","pytest":"tests/test_requests.py","k":"","src":"src/requests/sessions.py","fixB64":"LS0tIGEvc3JjL3JlcXVlc3RzL3Nlc3Npb25zLnB5CisrKyBiL3NyYy9yZXF1ZXN0cy9zZXNzaW9ucy5weQpAQCAtMTc5LDkgKzE3OSw4IEBAIGRlZiByZXNvbHZlX3JlZGlyZWN0cygKICAgICAgICAgICAgIHByZXBhcmVkX3JlcXVlc3QgPSByZXEuY29weSgpCiAKICAgICAgICAgICAgICMgVXBkYXRlIGhpc3RvcnkgYW5kIGtlZXAgdHJhY2sgb2YgcmVkaXJlY3RzLgotICAgICAgICAgICAgIyByZXNwLmhpc3RvcnkgbXVzdCBpZ25vcmUgdGhlIG9yaWdpbmFsIHJlcXVlc3QgaW4gdGhpcyBsb29wCisgICAgICAgICAgICByZXNwLmhpc3RvcnkgPSBoaXN0WzpdCiAgICAgICAgICAgICBoaXN0LmFwcGVuZChyZXNwKQotICAgICAgICAgICAgcmVzcC5oaXN0b3J5ID0gaGlzdFsxOl0KIAogICAgICAgICAgICAgdHJ5OgogICAgICAgICAgICAgICAgIHJlc3AuY29udGVudCAgIyBDb25zdW1lIHNvY2tldCBzbyBpdCBjYW4gYmUgcmVsZWFzZWQ=","testB64":"LS0tIGEvdGVzdHMvdGVzdF9yZXF1ZXN0cy5weQorKysgYi90ZXN0cy90ZXN0X3JlcXVlc3RzLnB5CkBAIC0yMTcsNiArMjE3LDE0IEBAIGRlZiB0ZXN0X0hUVFBfMzAyX0FMTE9XX1JFRElSRUNUX0dFVChzZWxmLCBodHRwYmluKToKICAgICAgICAgYXNzZXJ0IHIuaGlzdG9yeVswXS5zdGF0dXNfY29kZSA9PSAzMDIKICAgICAgICAgYXNzZXJ0IHIuaGlzdG9yeVswXS5pc19yZWRpcmVjdAogCisgICAgZGVmIHRlc3RfcmVkaXJlY3RfaGlzdG9yeV9ub19zZWxmX3JlZmVyZW5jZShzZWxmLCBodHRwYmluKToKKyAgICAgICAgciA9IHJlcXVlc3RzLmdldChodHRwYmluKCJyZWRpcmVjdCIsICIzIikpCisgICAgICAgIGFzc2VydCByLnN0YXR1c19jb2RlID09IDIwMAorICAgICAgICBhc3NlcnQgbGVuKHIuaGlzdG9yeSkgPT0gMworICAgICAgICBmb3IgaSwgcmVzcCBpbiBlbnVtZXJhdGUoci5oaXN0b3J5KToKKyAgICAgICAgICAgIGFzc2VydCByZXNwIG5vdCBpbiByZXNwLmhpc3RvcnkKKyAgICAgICAgICAgIGFzc2VydCByZXNwLmhpc3RvcnkgPT0gci5oaXN0b3J5WzppXQorCiAgICAgZGVmIHRlc3RfSFRUUF8zMDdfQUxMT1dfUkVESVJFQ1RfUE9TVChzZWxmLCBodHRwYmluKToKICAgICAgICAgciA9IHJlcXVlc3RzLnBvc3QoCiAgICAgICAgICAgICBodHRwYmluKCJyZWRpcmVjdC10byIpLA=="},
+  "requests_7309": {"repo":"psf/requests","base":"7407309c8a8a73aa2f4337184025d440bbedab7a","pytest":"tests/test_utils.py","k":"","src":"src/requests/utils.py","fixB64":"LS0tIGEvc3JjL3JlcXVlc3RzL3V0aWxzLnB5CisrKyBiL3NyYy9yZXF1ZXN0cy91dGlscy5weQpAQCAtNTAyLDI2ICs1MDIsMjMgQEAgZGVmIGdldF9lbmNvZGluZ3NfZnJvbV9jb250ZW50KGNvbnRlbnQpOgogCiAKIGRlZiBfcGFyc2VfY29udGVudF90eXBlX2hlYWRlcihoZWFkZXIpOgotICAgICIiIlJldHVybnMgY29udGVudCB0eXBlIGFuZCBwYXJhbWV0ZXJzIGZyb20gZ2l2ZW4gaGVhZGVyCisgICAgIiIiUmV0dXJucyBjb250ZW50IHR5cGUgYW5kIHBhcmFtZXRlcnMgZnJvbSBnaXZlbiBoZWFkZXIuCiAKICAgICA6cGFyYW0gaGVhZGVyOiBzdHJpbmcKICAgICA6cmV0dXJuOiB0dXBsZSBjb250YWluaW5nIGNvbnRlbnQgdHlwZSBhbmQgZGljdGlvbmFyeSBvZgotICAgICAgICAgcGFyYW1ldGVycworICAgICAgICAgcGFyYW1ldGVycy4KICAgICAiIiIKIAogICAgIHRva2VucyA9IGhlYWRlci5zcGxpdCgiOyIpCiAgICAgY29udGVudF90eXBlLCBwYXJhbXMgPSB0b2tlbnNbMF0uc3RyaXAoKSwgdG9rZW5zWzE6XQogICAgIHBhcmFtc19kaWN0ID0ge30KLSAgICBpdGVtc190b19zdHJpcCA9ICJcIicgIgorICAgIHN0cmlwX2NoYXJzID0gIlwiJyAiCiAKICAgICBmb3IgcGFyYW0gaW4gcGFyYW1zOgogICAgICAgICBwYXJhbSA9IHBhcmFtLnN0cmlwKCkKLSAgICAgICAgaWYgcGFyYW06Ci0gICAgICAgICAgICBrZXksIHZhbHVlID0gcGFyYW0sIFRydWUKLSAgICAgICAgICAgIGluZGV4X29mX2VxdWFscyA9IHBhcmFtLmZpbmQoIj0iKQotICAgICAgICAgICAgaWYgaW5kZXhfb2ZfZXF1YWxzICE9IC0xOgotICAgICAgICAgICAgICAgIGtleSA9IHBhcmFtWzppbmRleF9vZl9lcXVhbHNdLnN0cmlwKGl0ZW1zX3RvX3N0cmlwKQotICAgICAgICAgICAgICAgIHZhbHVlID0gcGFyYW1baW5kZXhfb2ZfZXF1YWxzICsgMSA6XS5zdHJpcChpdGVtc190b19zdHJpcCkKKyAgICAgICAgaWYgcGFyYW0gYW5kIChpZHggOj0gcGFyYW0uZmluZCgiPSIpKSAhPSAtMToKKyAgICAgICAgICAgIGtleSA9IHBhcmFtWzppZHhdLnN0cmlwKHN0cmlwX2NoYXJzKQorICAgICAgICAgICAgdmFsdWUgPSBwYXJhbVtpZHggKyAxIDpdLnN0cmlwKHN0cmlwX2NoYXJzKQogICAgICAgICAgICAgcGFyYW1zX2RpY3Rba2V5Lmxvd2VyKCldID0gdmFsdWUKICAgICByZXR1cm4gY29udGVudF90eXBlLCBwYXJhbXNfZGljdAog","testB64":"LS0tIGEvdGVzdHMvdGVzdF91dGlscy5weQorKysgYi90ZXN0cy90ZXN0X3V0aWxzLnB5CkBAIC01OTMsNyArNTkzLDYgQEAgZGVmIHRlc3RfcGFyc2VfZGljdF9oZWFkZXIodmFsdWUsIGV4cGVjdGVkKToKICAgICAgICAgICAgICAgICB7CiAgICAgICAgICAgICAgICAgICAgICJib3VuZGFyeSI6ICJzb21ldGhpbmciLAogICAgICAgICAgICAgICAgICAgICAiYm91bmRhcnkyIjogInNvbWV0aGluZ19lbHNlIiwKLSAgICAgICAgICAgICAgICAgICAgIm5vX2VxdWFscyI6IFRydWUsCiAgICAgICAgICAgICAgICAgfSwKICAgICAgICAgICAgICksCiAgICAgICAgICksCkBAIC02MDQsNyArNjAzLDYgQEAgZGVmIHRlc3RfcGFyc2VfZGljdF9oZWFkZXIodmFsdWUsIGV4cGVjdGVkKToKICAgICAgICAgICAgICAgICB7CiAgICAgICAgICAgICAgICAgICAgICJib3VuZGFyeSI6ICJzb21ldGhpbmciLAogICAgICAgICAgICAgICAgICAgICAiYm91bmRhcnkyIjogInNvbWV0aGluZ19lbHNlIiwKLSAgICAgICAgICAgICAgICAgICAgIm5vX2VxdWFscyI6IFRydWUsCiAgICAgICAgICAgICAgICAgfSwKICAgICAgICAgICAgICksCiAgICAgICAgICksCkBAIC02MTUsNyArNjEzLDYgQEAgZGVmIHRlc3RfcGFyc2VfZGljdF9oZWFkZXIodmFsdWUsIGV4cGVjdGVkKToKICAgICAgICAgICAgICAgICB7CiAgICAgICAgICAgICAgICAgICAgICJib3VuZGFyeSI6ICJzb21ldGhpbmciLAogICAgICAgICAgICAgICAgICAgICAiYm91bmRhcnkyIjogInNvbWV0aGluZ19lbHNlIiwKLSAgICAgICAgICAgICAgICAgICAgIm5vX2VxdWFscyI6IFRydWUsCiAgICAgICAgICAgICAgICAgfSwKICAgICAgICAgICAgICksCiAgICAgICAgICksCkBAIC02MjYsNyArNjIzLDYgQEAgZGVmIHRlc3RfcGFyc2VfZGljdF9oZWFkZXIodmFsdWUsIGV4cGVjdGVkKToKICAgICAgICAgICAgICAgICB7CiAgICAgICAgICAgICAgICAgICAgICJib3VuZGFyeSI6ICJzb21ldGhpbmciLAogICAgICAgICAgICAgICAgICAgICAiYm91bmRhcnkyIjogInNvbWV0aGluZ19lbHNlIiwKLSAgICAgICAgICAgICAgICAgICAgIm5vX2VxdWFscyI6IFRydWUsCiAgICAgICAgICAgICAgICAgfSwKICAgICAgICAgICAgICksCiAgICAgICAgICksCkBAIC02NDYsNiArNjQyLDEwIEBAIGRlZiB0ZXN0X19wYXJzZV9jb250ZW50X3R5cGVfaGVhZGVyKHZhbHVlLCBleHBlY3RlZCk6CiAgICAgICAgICAgICAidXRmLTgiLAogICAgICAgICApLAogICAgICAgICAoQ2FzZUluc2Vuc2l0aXZlRGljdCh7ImNvbnRlbnQtdHlwZSI6ICJ0ZXh0L3BsYWluIn0pLCAiSVNPLTg4NTktMSIpLAorICAgICAgICAoCisgICAgICAgICAgICBDYXNlSW5zZW5zaXRpdmVEaWN0KHsiY29udGVudC10eXBlIjogInRleHQvaHRtbDsgY2hhcnNldCJ9KSwKKyAgICAgICAgICAgICJJU08tODg1OS0xIiwKKyAgICAgICAgKSwKICAgICApLAogKQogZGVmIHRlc3RfZ2V0X2VuY29kaW5nX2Zyb21faGVhZGVycyh2YWx1ZSwgZXhwZWN0ZWQpOg=="},
 }
-REWRITE_LOW_TERSE = {"model": "tinfoil/gemma4-31b", "reasoningEffort": "low"}
-FILE_HINTS = {
-    "fastapi_14786": "Edit ONLY fastapi/security/utils.py (get_authorization_scheme_param, add .strip()).",
-    "fastapi_13537": "Edit ONLY fastapi/dependencies/utils.py (_extract_form_body / visited fields + extra-key fix). Do NOT touch fastapi/routing.py.",
-    """rich_3905""": "Edit ONLY rich/progress.py (Progress start/stop symmetry).",
-    "fastapi_14258": "Edit ONLY fastapi/routing.py (APIRouter.include_router self-guard, AssertionError).",
-    "fastapi_15589": "Edit ONLY fastapi/dependencies/utils.py (query/cookie/header model extra params). Output a REAL diff, never empty.",
-    """rich_3894""": "Edit ONLY rich/_inspect.py (_get_signature qualname fallback).",
-}
-EDGE_HINTS = {
-    "fastapi_14786": "Must return scheme, param.strip().",
-    "fastapi_13537": "Track visited fields, keep extra-key fix, correct file only.",
-    """rich_3905""": "Repro disabled non-interactive track first; symmetric gate.",
-    "fastapi_14258": "Raise AssertionError with exact message on router.include_router(router).",
-    "fastapi_15589": "Non-empty diff required; empty output = FAIL, retry.",
-    """rich_3894""": "Repro lru_cache + __slots__ inspect first; type-check fallback.",
-}
-ORACLES = {
-    "fastapi_14786": "ORACLE: return scheme, param.strip().",
-    "fastapi_13537": "ORACLE: track visited fields; extra keys pass through; correct file only.",
-    """rich_3905""": "",
-    "fastapi_14258": "ORACLE: raise AssertionError with EXACT message: Cannot include the same APIRouter instance into itself. Did you mean to include a different router? (test uses match= on this string).",
-    "fastapi_15589": "ORACLE: mark BOTH the converted alias and the original field alias as processed (gold adds processed_keys for the lookup alias AND get_validation_alias(field)); non-empty diff required; empty output = FAIL.",
-    """rich_3894""": "",
-}
-def _parse_blocks(body):
-    # SLICE-2 delimiter tolerance: models wrap blocks in fences and vary
-    # chevrons/spacing (<<<< SEARCH, <<<<<<< SEARCH). Flex ONLY delimiter
-    # lines via regex; SEARCH/repl CONTENT bytes stay exact (fidelity gate
-    # lives in harness). A trailing ``` fence line is ignored.
-    import re as _rx
-    _SEARCH_RE = _rx.compile(r"^\s*<{4,8}\s*SEARCH\s*$")
-    _SEP_RE = _rx.compile(r"^\s*={4,8}\s*$")
-    _END_RE = _rx.compile(r"^\s*>{4,8}\s*$")
-    blocks = []
-    parts = body.split("FILE:")
-    if len(parts) < 2:
-        return None
-    for p in parts[1:]:
-        nl = p.find("\n")
-        if nl < 0:
-            return None
-        path = p[:nl].strip().strip("`").strip()
-        if not path:
-            return None
-        lines = p[nl + 1:].split("\n")
-        while lines and lines[-1].strip() in ("```",):
-            lines.pop()
-        # MULTI-PAIR (M518): successive SEARCH/======/>>>>>> triples under one
-        # FILE: header all apply; a malformed triple voids the whole reply.
-        triples = []
-        i = 0
-        n = len(lines)
-        while True:
-            while i < n and not lines[i].strip():
-                i += 1
-            if i >= n:
-                break
-            if not _SEARCH_RE.match(lines[i]):
-                return None
-            try:
-                mi = next(j for j in range(i + 1, n) if _SEP_RE.match(lines[j]))
-                ei = next(j for j in range(mi + 1, n) if _END_RE.match(lines[j]))
-            except StopIteration:
-                return None
-            if mi <= i + 1 or ei <= mi + 1:
-                return None
-            search = "\n".join(lines[i + 1:mi])
-            repl = "\n".join(lines[mi + 1:ei])
-            if len(search.strip()) < 20:
-                return None
-            triples.append((search, repl))
-            i = ei + 1
-        if not triples:
-            return None
-        for (search, repl) in triples:
-            blocks.append((path, search, repl))
-    return blocks or None
-
-async def ask(s, pid, prompt):
-    full = CONTRACT + " Emit exactly ONE FILE:/SEARCH/REPLACE triple; SEARCH must be a verbatim copy of source lines (full signature, no truncation) or the reply voids.\n\n" + prompt
-    last = ""
-    for attempt in range(3):
-        q = full if attempt == 0 else "INVALID prior output (unparseable block, wrong FILE, or ambiguous SEARCH). Resubmit BLOCKS ONLY, correct FILE, SEARCH copied verbatim from LOCALIZED CODE.\n\n" + full
-        reply = await s.send(q, rewrite=REWRITE_LOW_TERSE)
-        last = reply
-        b = reply.strip()
-        if b.startswith("```"):
-            ls = b.split("\n")
-            b = "\n".join(ls[1:-1] if ls[-1].strip().startswith("```") else ls[1:])
-        bl = _parse_blocks(b)
-        if bl and all(p in ALLOW.get(pid, []) for (p, _s, _r) in bl):
-            return reply.replace("```", "")
-        print("RETRY " + pid + " attempt=" + str(attempt + 1) + " len=" + str(len(reply)), flush=True)
-    return last
-
-_DEPS_OK = False
-_DEPS_LOCK = threading.Lock()
-PYTESTS = {
-    "fastapi_14786": "tests/test_security_http_base.py",
-    "fastapi_13537": "tests/test_form_default.py",
-    """rich_3905""": "tests/test_progress.py -k test_no_output_if_progress_is_disabled_non_interactive",
-    "fastapi_14258": "tests/test_router_circular_import.py",
-    "fastapi_15589": "tests/test_query_cookie_header_model_extra_params.py",
-    """rich_3894""": "tests/test_inspect.py -k test_qualname_in_slots",
-}
-def ensure_deps():
-    global _DEPS_OK
-    with _DEPS_LOCK:
-        if _DEPS_OK:
-            return
-        # DO NOT REMOVE annotated-doc (M495): fastapi runtime dep (`from annotated_doc import Doc`
-        # in fastapi src). Agent never emits it; eval image has it baked. Without it every
-        # pytest dies at collection (0/6 verified). Harness-only line (runners are online);
-        # the submission bundle itself must still assume offline (M495a).
-        sh("pip install -q fastapi pytest pytest-timeout requests python-multipart annotated-doc starlette==0.37.2 httpx==0.27.2 2>&1 | tail -1", timeout=300)
-        sh("pip install -q tornado pyramid webtest pygments 2>&1 | tail -1", timeout=300)
-        _DEPS_OK = True
-
-
-def sh(cmd, **kw):
-    p = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=kw.get("timeout", 300))
-    return p.returncode, (p.stdout or "")[-2000:] + (p.stderr or "")[-2000:]
-
-# SLICE-2 Turn-2 feedback: harness records actionable failure tails here;
-# main() sends at most ONE follow-up per pid in the same session.
-FAIL_TAILS = {}
-def harness(pid, reply, t):
-    body = reply.strip()
-    if body.startswith("```"):
-        ls = body.split("\n")
-        body = "\n".join(ls[1:-1] if ls[-1].strip().startswith("```") else ls[1:])
-    blocks = _parse_blocks(body)
-    if not blocks:
-        print("EMPTY-DIFF " + pid + " len=" + str(len(body)), flush=True)
-        FAIL_TAILS[pid] = "no parseable FILE:/SEARCH blocks in reply len=" + str(len(body)) + " — resubmit BLOCKS ONLY, SEARCH copied verbatim from LOCALIZED CODE slice"
-        return "empty len=" + str(len(body))
-    ok_paths = ALLOW.get(pid, [])
-    for (path, _s, _r) in blocks:
-        if path not in ok_paths:
-            print("WRONG-FILE " + pid + " " + path, flush=True)
-            FAIL_TAILS[pid] = "wrong FILE " + path + " — allowed: " + str(ok_paths); return "wrong-file " + path
-    # SLICE-2 (M471): ALL collected outputs go to OUT_DIR only (blocks +
-    # real unified diffs + replies + pytest tails). Work checkouts + tarballs
-    # stay in /tmp/duck6_<pid> and are NEVER uploaded (prior /tmp/duck6_*
-    # glob caught worktrees+tarballs = 146MB bloat; target <5MB).
-    OUT_DIR = "/tmp/duck6_out"
-    try:
-        os.makedirs(OUT_DIR, exist_ok=True)
-    except Exception:
-        pass
-    raw_path = OUT_DIR + "/" + pid + ".blocks"
-    open(raw_path, "w").write(body if body.endswith("\n") else body + "\n")
+def sh(cmd, timeout=300):
+    p = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=timeout)
+    return p.returncode, ((p.stdout or "")[-2000:] + (p.stderr or "")[-2000:])
+sh("pip install -q pytest pytest-timeout pytest-httpbin pytest-mock \"urllib3<2\" chardet charset-normalizer idna certifi 2>&1 | tail -1", timeout=600)
+for pid, t in TASKS.items():
     work = "/tmp/duck6_" + pid
     sh("rm -rf " + work + " && mkdir -p " + work)
     url = "https://github.com/" + t["repo"] + "/archive/" + t["base"] + ".tar.gz"
@@ -391,160 +28,45 @@ def harness(pid, reply, t):
     try:
         urllib.request.urlretrieve(url, work + "/src.tgz")
     except Exception as e:
-        print("FETCH-FAIL " + pid + " " + str(e)[:200], flush=True)
-        return "fetch-fail len=" + str(len(reply))
-    sh("tar xzf " + work + "/src.tgz -C " + work + " --strip-components=1 && cd " + work + " && pip install -q -e . --no-deps 2>&1 | tail -1", timeout=300)
-    ensure_deps()
-    # SHADOW-GUARD (M518): src-layout repos (requests) are unimportable from the
-    # tarball root via pytest path insertion, so tests would silently run against
-    # site-packages instead of the patch. Force tarball-first via PYTHONPATH and
-    # PROVE it by resolving the module file before pytest.
-    mod = t["repo"].split("/")[1]
-    pyenv = "PYTHONPATH=" + work + ":" + work + "/src"
-    open(work + "/conftest.py", "w").write("import inspect as _i\n_i.getargspec = getattr(_i, 'getargspec', _i.getfullargspec)\n")
-    mrc, mout = sh("cd " + work + " && " + pyenv + " python -c \"import " + mod + "; print(" + mod + ".__file__)\" 2>&1 | tail -2", timeout=60)
-    print("MODFILE " + pid + " " + mod + " " + mout[-160:], flush=True)
+        print("TEST-RESULT " + pid + " fetch-fail " + str(e)[:160], flush=True)
+        continue
+    sh("tar xzf " + work + "/src.tgz -C " + work + " --strip-components=1", timeout=120)
+    pyenv = "PYTHONPATH=" + work
+    mrc, mout = sh("cd " + work + " && " + pyenv + " python -c \"import requests; print(requests.__file__)\" 2>&1 | tail -2", timeout=60)
+    print("MODFILE " + pid + " requests " + mout[-160:], flush=True)
     if (work + "/") not in mout:
-        FAIL_TAILS[pid] = "shadow import: " + mod + " resolves outside work dir (" + mout[-160:] + ") — tarball code would NOT run; fix PYTHONPATH/install before trusting pytest"
-        return "shadow-fail " + mod
-    allow0 = (ALLOW.get(pid, [""])[0] or "")
-    fmod = allow0[:-3].replace("/", ".") if allow0.endswith(".py") else mod
-    mrc2, mout2 = sh("cd " + work + " && " + pyenv + " python -c \"import " + fmod + "; print(" + fmod + ".__file__)\" 2>&1 | tail -2", timeout=60)
-    print("MODFILE2 " + pid + " " + fmod + " " + mout2[-160:], flush=True)
-    if (work + "/") not in mout2:
-        FAIL_TAILS[pid] = "shadow import (file): " + fmod + " resolves outside work dir (" + mout2[-160:] + ") - tarball code would NOT run"
-        return "shadow-fail-file " + fmod
-    applied = []
-    origs = {}
-    n_bl = len(blocks)
-    for (path, search, repl) in blocks:
-        fp = work + "/" + path
-        try:
-            content = open(fp).read()
-        except Exception:
-            print("READ-FAIL " + pid + " " + path, flush=True)
-            return "read-fail " + path
-        n = content.count(search)
-        if n == 1:
-            new_content = content.replace(search, repl, 1)
-        elif n == 0:
-            # SLICE-2 whitespace fallback: trailing-whitespace-insensitive
-            # match, applied ONLY on a strictly unique line-range hit
-            # (verified before replace). Still a miss otherwise.
-            new_content = None
-            olines = content.split("\n")
-            norm = "\n".join(ln.rstrip() for ln in olines)
-            nsearch = "\n".join(ln.rstrip() for ln in search.split("\n"))
-            if nsearch.strip() and norm.count(nsearch) == 1:
-                start = norm.find(nsearch)
-                pre = norm[:start].count("\n")
-                nlines = nsearch.count("\n") + 1
-                if pre + nlines <= len(olines):
-                    cand = "\n".join(olines[pre:pre + nlines])
-                    if "\n".join(ln.rstrip() for ln in cand.split("\n")) == nsearch:
-                        print("SEARCH-WSFALLBACK " + pid + " " + path + " lines=" + str(nlines), flush=True)
-                        olines[pre:pre + nlines] = repl.split("\n")
-                        new_content = "\n".join(olines)
-            if new_content is None:
-                print("SEARCH-MISS " + pid + " " + path + " n=0 block " + str(len(applied) + 1) + "/" + str(n_bl), flush=True)
-                FAIL_TAILS[pid] = "SEARCH block " + str(len(applied) + 1) + "/" + str(n_bl) + " not found verbatim in " + path + " — copy exact lines from the LOCALIZED CODE slice (byte-for-byte, no rewording). NOTE: earlier blocks in this reply already applied to the file."
-                return "search-miss " + path + " applied " + str(len(applied)) + "/" + str(n_bl)
-        else:
-            print("SEARCH-AMBIGUOUS " + pid + " " + path + " n=" + str(n) + " block " + str(len(applied) + 1) + "/" + str(n_bl), flush=True)
-            FAIL_TAILS[pid] = "SEARCH block " + str(len(applied) + 1) + "/" + str(n_bl) + " matches " + str(n) + " places in " + path + " — extend SEARCH with more surrounding context lines until unique"
-            return "search-ambiguous " + path + " applied " + str(len(applied)) + "/" + str(n_bl)
-        origs[path] = content
-        open(fp, "w").write(new_content)
-        applied.append(path)
-    # SLICE-2: real unified diffs into OUT_DIR (verdict evidence, not the
-    # .blocks proposals — applied-file diff is what pytest actually ran).
-    try:
-        import difflib
-        dl = []
-        for path in applied:
-            new = open(work + "/" + path).read()
-            dl.extend(difflib.unified_diff(origs[path].splitlines(), new.splitlines(), "a/" + path, "b/" + path, lineterm=""))
-        open(OUT_DIR + "/" + pid + ".diff", "w").write("\n".join(dl) + "\n" if dl else "")
-    except Exception as e:
-        print("DIFF-FAIL " + pid + " " + str(e)[:160], flush=True)
-    rc, out = sh("cd " + work + " && python -m py_compile " + " ".join(sorted(set(applied))) + " 2>&1; echo COMPILE_RC=$?", timeout=60)
-    print("COMPILE " + pid + " rc=" + str(rc) + " " + out[-200:], flush=True)
-    open(work + "/test_patch.diff", "w").write(t["test_patch"] if t["test_patch"].endswith("\n") else t["test_patch"] + "\n")
-    sh("cd " + work + " && git apply test_patch.diff 2>&1 | head -5; echo TEST_APPLIED_RC=$?", timeout=60)
-    ensure_deps()
-    tf = PYTESTS.get(pid, "")
-    trc, tout = sh("cd " + work + " && " + pyenv + " python -m pytest " + tf + " -v --tb=short -W ignore::PendingDeprecationWarning -W ignore::DeprecationWarning -p no:cacheprovider > pytest_out.txt 2>&1; echo PYTEST_RC=$?; tail -15 pytest_out.txt", timeout=300)
+        print("TEST-RESULT " + pid + " shadow-fail " + mout[-160:], flush=True)
+        continue
+    open(work + "/test_patch.diff", "w").write(base64.b64decode(t["testB64"]).decode())
+    trc2, tout2 = sh("cd " + work + " && git apply test_patch.diff 2>&1; echo TEST_APPLIED_RC=$?", timeout=60)
+    print("TEST-APPLY " + pid + " " + tout2[-200:], flush=True)
+    if "TEST_APPLIED_RC=0" not in tout2:
+        print("TEST-RESULT " + pid + " test-apply-fail", flush=True)
+        continue
+    brc, bout = sh("cd " + work + " && " + pyenv + " python -m pytest " + t["pytest"] + (" -k \"" + t["k"] + "\"" if t["k"] else "") + " -q --tb=no -W ignore::DeprecationWarning -p no:cacheprovider -p no:unraisableexception > basefail_out.txt 2>&1; echo BASE_RC=$? > base_rc.txt; tail -5 basefail_out.txt; cat base_rc.txt", timeout=300)
+    import re as _re2
+    _bm = _re2.search(r"BASE_RC=(\d+)", bout)
+    _brc = _bm.group(1) if _bm else "?"
+    print("BASE-FAIL-PROOF " + pid + " base_rc=" + _brc + " " + bout[-300:], flush=True)
+    _sbrc, _sbout = sh("grep -aE \"passed|failed|error\" " + work + "/basefail_out.txt | tail -4", timeout=30)
+    print("BASE-SUMMARY " + pid + " " + _sbout[-300:], flush=True)
+    _seen_base[pid] = _sbout[-300:]
+    open(work + "/fix.diff", "w").write(base64.b64decode(t["fixB64"]).decode())
+    frc, fout = sh("cd " + work + " && git apply fix.diff 2>&1; echo FIX_APPLIED_RC=$?", timeout=60)
+    print("FIX-APPLY " + pid + " " + fout[-200:], flush=True)
+    if "FIX_APPLIED_RC=0" not in fout:
+        print("TEST-RESULT " + pid + " fix-apply-fail", flush=True)
+        continue
+    crc, cout = sh("cd " + work + " && python -m py_compile " + t["src"] + " 2>&1; echo COMPILE_RC=$?", timeout=60)
+    print("COMPILE " + pid + " " + cout[-200:], flush=True)
+    trc, tout = sh("cd " + work + " && " + pyenv + " python -m pytest " + t["pytest"] + (" -k \"" + t["k"] + "\"" if t["k"] else "") + " -v --tb=short -W ignore::DeprecationWarning -p no:cacheprovider -p no:unraisableexception > pytest_out.txt 2>&1; echo PYTEST_RC=$?; tail -15 pytest_out.txt", timeout=300)
     sh("cp " + work + "/pytest_out.txt " + OUT_DIR + "/" + pid + ".pytest.txt", timeout=30)
+    open(OUT_DIR + "/" + pid + ".applied.txt", "w").write("fix_rc=0 test_rc=0 pytest_out_tail:\n" + tout[-1500:])
     import re as _re
     _m = _re.search(r"PYTEST_RC=(\d+)", tout)
     _ptr = _m.group(1) if _m else "?"
     print("TEST-RESULT " + pid + " rc=" + str(trc) + " pytest_rc=" + _ptr + " " + tout[-800:], flush=True)
-    if str(_ptr) != "0":
-        FAIL_TAILS[pid] = "pytest failed (pytest_rc=" + str(_ptr) + " blocks " + str(len(applied)) + "/" + str(n_bl) + "):\n" + tout[-1500:]
-    print("APPLIED " + pid + " " + str(len(applied)) + "/" + str(n_bl) + " blocks", flush=True)
-    return "collected len=" + str(len(reply)) + " testrc=" + _ptr + " blocks=" + str(len(applied)) + "/" + str(n_bl)
-
-async def main():
-    s = DuckAISession(model="tinfoil/gemma4-31b", timeout=240.0)
-    results = {}
-    replies = {}
-    if True:  # (was try/finally-close; close moved after TURN-2)
-        for pid, prompt in PROMPTS.items():
-            t = TASKS[pid]
-            print("=== TASK " + pid + " (" + t["repo"] + "@" + t["base"][:12] + ") ===", flush=True)
-            try:
-                reply = await ask(s, pid, prompt)
-            except Exception as e:
-                print("CHAT-FAIL " + pid + " " + str(e)[:300], flush=True)
-                results[pid] = "chat-fail"
-                continue
-            print("REPLY-OK " + pid + " len=" + str(len(reply)), flush=True)
-            replies[pid] = reply
-            # SLICE-2: save the FULL raw reply (13920/14258 diagnosis needs
-            # the unmodified model text, not just parsed blocks).
-            try:
-                os.makedirs("/tmp/duck6_out", exist_ok=True)
-                open("/tmp/duck6_out/" + pid + ".reply.txt", "w").write(reply)
-            except Exception as e:
-                print("REPLY-SAVE-FAIL " + pid + " " + str(e)[:120], flush=True)
-    # (no close here — session stays open for TURN-2 below; closed after)
-    import asyncio as _a
-    async def run_one(pid):
-        return pid, await _a.to_thread(harness, pid, replies[pid], TASKS[pid])
-    out = await _a.gather(*[run_one(pid) for pid in replies])
-    for pid, res in out:
-        results[pid] = res
-        print("SCORED-COLLECTED " + pid + " " + res, flush=True)
-    # TURN-2 (SLICE-2): ONE follow-up in the SAME session for actionable
-    # harness failures only: pytest_rc=1 (real test failures, e.g. 7427
-    # prelocalhost tail), search-miss, empty. Env/collection failures
-    # (pytest_rc 2/4/5) are NOT model faults — no retry, no variance burn.
-    try:
-        t2pids = []
-        for pid, res in out:
-            if res.startswith("search-miss") or res.startswith("empty") or res.startswith("wrong-file"):
-                t2pids.append(pid)
-            elif "testrc=1" in res:
-                t2pids.append(pid)
-        for pid in t2pids:
-            tail = FAIL_TAILS.get(pid, "")[-1500:]
-            fb = ("HARNESS FEEDBACK on your prior BLOCKS for " + pid + ":\n" + tail
-                  + "\nResubmit BLOCKS ONLY (same contract: FILE:/SEARCH/======/>>>>>>, SEARCH copied verbatim from LOCALIZED CODE). Minimal fix only.\n\n" + PROMPTS[pid])
-            try:
-                reply2 = await s.send(fb, rewrite=REWRITE_LOW_TERSE)
-            except Exception as e:
-                print("TURN2-FAIL " + pid + " " + str(e)[:200], flush=True)
-                continue
-            print("REPLY2-OK " + pid + " len=" + str(len(reply2)), flush=True)
-            try:
-                open("/tmp/duck6_out/" + pid + ".reply2.txt", "w").write(reply2)
-            except Exception:
-                pass
-            res2 = await _a.to_thread(harness, pid, reply2, TASKS[pid])
-            results[pid] = res2 + " [turn2]"
-            print("SCORED-COLLECTED-T2 " + pid + " " + results[pid], flush=True)
-    finally:
-        await s.close()
-    print("STAGEA-RESULTS " + str(results), flush=True)
-
-asyncio.run(main())
+    _seen_testresult[pid] = _ptr
+assert set(_seen_testresult.keys()) == set(TASKS.keys()), "missing TEST-RESULT for " + str(set(TASKS.keys()) - set(_seen_testresult.keys()))
+print("SEEN-RESULTS " + str(sorted(_seen_testresult.items())), flush=True)
+print("PROBE-DONE", flush=True)
