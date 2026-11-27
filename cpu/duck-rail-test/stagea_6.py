@@ -55,12 +55,6 @@ for pid, t in TASKS.items():
     if (work + "/") not in mout:
         print("TEST-RESULT " + pid + " shadow-fail " + mout[-160:], flush=True)
         continue
-    open(work + "/fix.diff", "w").write(base64.b64decode(t["fixB64"]).decode())
-    frc, fout = sh("cd " + work + " && git apply fix.diff 2>&1; echo FIX_APPLIED_RC=$?", timeout=60)
-    print("FIX-APPLY " + pid + " " + fout[-200:], flush=True)
-    if "FIX_APPLIED_RC=0" not in fout:
-        print("TEST-RESULT " + pid + " fix-apply-fail", flush=True)
-        continue
     open(work + "/test_patch.diff", "w").write(base64.b64decode(t["testB64"]).decode())
     trc2, tout2 = sh("cd " + work + " && git apply test_patch.diff 2>&1; echo TEST_APPLIED_RC=$?", timeout=60)
     print("TEST-APPLY " + pid + " " + tout2[-200:], flush=True)
@@ -72,6 +66,12 @@ for pid, t in TASKS.items():
     _bm = _re2.search(r"BASE_RC=(\d+)", bout)
     _brc = _bm.group(1) if _bm else "?"
     print("BASE-FAIL-PROOF " + pid + " base_rc=" + _brc + " " + bout[-300:], flush=True)
+    open(work + "/fix.diff", "w").write(base64.b64decode(t["fixB64"]).decode())
+    frc, fout = sh("cd " + work + " && git apply fix.diff 2>&1; echo FIX_APPLIED_RC=$?", timeout=60)
+    print("FIX-APPLY " + pid + " " + fout[-200:], flush=True)
+    if "FIX_APPLIED_RC=0" not in fout:
+        print("TEST-RESULT " + pid + " fix-apply-fail", flush=True)
+        continue
     crc, cout = sh("cd " + work + " && python -m py_compile " + t["src"] + " 2>&1; echo COMPILE_RC=$?", timeout=60)
     print("COMPILE " + pid + " " + cout[-200:], flush=True)
     trc, tout = sh("cd " + work + " && " + pyenv + " python -m pytest " + t["pytest"] + " -k " + t["k"] + " -v --tb=short -p no:cacheprovider > pytest_out.txt 2>&1; echo PYTEST_RC=$?; tail -15 pytest_out.txt", timeout=300)
