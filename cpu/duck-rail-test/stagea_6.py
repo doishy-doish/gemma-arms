@@ -18,7 +18,7 @@ TASKS = {
 def sh(cmd, timeout=300):
     p = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=timeout)
     return p.returncode, ((p.stdout or "")[-2000:] + (p.stderr or "")[-2000:])
-sh("pip install -q pytest pytest-timeout pytest-httpbin pytest-mock \"urllib3<2\" chardet charset-normalizer idna certifi 2>&1 | tail -1", timeout=600)
+sh("pip install -q pytest pytest-timeout pytest-httpbin pytest-mock trustme \"urllib3<2\" chardet charset-normalizer idna certifi 2>&1 | tail -1", timeout=600)
 def _nl(s):  # M693/M742: git-2.56.1 rejects diffs without trailing NL (corrupt at last line); dataset bytes otherwise exact
     return s if s.endswith("\n") else s + "\n"
 for pid, t in TASKS.items():
@@ -52,6 +52,8 @@ for pid, t in TASKS.items():
     _sbrc, _sbout = sh("grep -aE \"passed|failed|error\" " + work + "/basefail_out.txt | tail -4", timeout=30)
     print("BASE-SUMMARY " + pid + " " + _sbout[-300:], flush=True)
     _seen_base[pid] = _sbout[-300:]
+    if _brc != "0":  # M742: error cause scrolls above the 300ch window; print the evidence on non-zero base RC
+        print("BASE-DETAIL " + pid + " " + bout[-1500:], flush=True)
     open(work + "/fix.diff", "w").write(_nl(base64.b64decode(t["fixB64"]).decode()))
     frc, fout = sh("cd " + work + " && git apply fix.diff 2>&1; echo FIX_APPLIED_RC=$?", timeout=60)
     print("FIX-APPLY " + pid + " " + fout[-200:], flush=True)
@@ -60,7 +62,7 @@ for pid, t in TASKS.items():
         continue
     crc, cout = sh("cd " + work + " && python -m py_compile " + t["src"] + " 2>&1; echo COMPILE_RC=$?", timeout=60)
     print("COMPILE " + pid + " " + cout[-200:], flush=True)
-    trc, tout = sh("cd " + work + " && " + pyenv + " python -m pytest " + t["pytest"] + (" -k \"" + t["k"] + "\"" if t["k"] else "") + " -v --tb=short -W ignore::DeprecationWarning -p no:cacheprovider -p no:unraisableexception > pytest_out.txt 2>&1; echo PYTEST_RC=$?; tail -15 pytest_out.txt", timeout=300)
+    trc, tout = sh("cd " + work + " && " + pyenv + " python -m pytest " + t["pytest"] + (" -k \"" + t["k"] + "\"" if t["k"] else "") + " -v --tb=short -W ignore::DeprecationWarning -p no:cacheprovider -p no:unraisableexception > pytest_out.txt 2>&1; echo PYTEST_RC=$?; tail -15 pytest_out.txt", timeout=600)
     sh("cp " + work + "/pytest_out.txt " + OUT_DIR + "/" + pid + ".pytest.txt", timeout=30)
     open(OUT_DIR + "/" + pid + ".applied.txt", "w").write("fix_rc=0 test_rc=0 pytest_out_tail:\n" + tout[-1500:])
     import re as _re
