@@ -1,4 +1,4 @@
-"""ROULETTE stagea (DRY-RUN, not fired) — seed 7, pool v1.
+"""O1 oracle-addition on fastapi_15589 (vs F7 6c7eaa4 GREEN 5/6; one variable: PROMPTS[15589] += ORACLES[15589]).
 F5 ladder: A=14786/13537/14258/15589 + B=3905/3894 on anchor base (B3 owed; cite M575).
 Builder: scratch/roulette/roulette-build.js. Anchor fragments byte-verbatim from scratch/duck-6-stagea_6.py; candidate fragments pyDq-escaped from scratch/roulette/spec-*.json (round-trip verified).
 """
@@ -86,6 +86,8 @@ ALLOW = {
 PROMPTS = {}
 for _pid in ISSUES:
     PROMPTS[_pid] = "You are an expert Python engineer. Minimal fix only.\n\n" + ISSUES[_pid] + "\n\nLOCALIZED CODE (verbatim from the base commit; SEARCH blocks must be copied from here byte-for-byte):\n" + SLICES[_pid] + "\n" + CONTRACT
+# O1 (M601): oracle-ADDITION on 15589 only — one variable vs F7. All other pids byte-identical de-oracled.
+PROMPTS["""fastapi_15589"""] += "\n" + ORACLES["""fastapi_15589"""]
 TASKS = {
     """fastapi_14786""": {"repo": """fastapi/fastapi""", "base": """eacbce24c9d299c6a28110d9fc8ac50f53cddb08""", "test_patch": """--- a/tests/test_security_http_base.py
 +++ b/tests/test_security_http_base.py
