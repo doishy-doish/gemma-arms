@@ -59,9 +59,9 @@ closes #13533""",
 Show a clear error on attempt to include a router into itself: router.include_router(router) must raise AssertionError with the EXACT message: Cannot include the same APIRouter instance into itself. Did you mean to include a different router?
 (The test uses match= on this exact string.)""",
     """fastapi_15589""": """ISSUE (fastapi_15589 in fastapi/fastapi at 22b02e26f9e8):
-With convert_underscores=True (the default), underscore headers must NOT be accepted: only hyphen-separated header names validate; apps opt into underscores via convert_underscores=False.
+With convert_underscores=True (the default), underscore headers must NOT be accepted: only hyphen-separated header names validate; apps opt into underscores via convert_underscores=False. The Headers branch of request_params_to_args derives TWO keys per field -- the lookup alias and get_validation_alias(field) -- but records only one in processed_keys; unrecorded keys fall through to the extra-params loop.
 Behavior: GET /header-requires-hyphen with both x-user-id=hyphenated-value AND x_user_id=underscore-value -> 200 {"x_user_id": "hyphenated-value"} (hyphen wins); with only x_user_id=underscore-value -> 422 with detail loc ["header", "x_user_id"].
-Non-empty real fix required.""",
+Non-empty real fix required; aim the fix at the Headers-branch key bookkeeping.""",
     """rich_3894""": "ISSUE (rich_3894 in Textualize/rich at 4d6d631a3d2d): inspect() crashes on unusual __qualname__ (non-str, e.g. lru_cache + __slots__). Fix: isinstance check, fall back to __name__ then name. Tests: test_qualname_in_slots passes without exception.",
     """rich_2725""": "ISSUE (rich_2725 in Textualize/rich at 577def22dd83): fix table rendering order of box elements.\n\nfix table rendering order of box elements\n\n## Description\n\n* Previously \"mid\" box elements appeared in last line of table (footer), while \"footer\" box elements appeared mid table body. Reversed that order so mid is truly mid, footer is truly footer.\n* Tested with:\n\n    ```\n    table.box.head_left = '1'\n    table.box.head_vertical = '2'\n    table.box.head_right = '3'\n\n    table.box.mid_left = '4'\n    table.box.mid_vertical = '5'\n    table.box.mid_right = '6'\n\n    table.box.foot_left = '7'\n    table.box.foot_vertical = '8'\n    table.box.foot_right = '9'\n    ```\n\n  After change, correct ordering:\n\n    ```\n    +--------------------------------------------------------------------------+\n    1Date        2Title                            2  Production2    Box Office3\n    |------------ --------------------------------- ------------ --------------|\n    4Dec 20, 20195Star Wars: The Rise of Skywalker 5$275,000,0005  $375,126,1186\n    4May 25, 20185Solo: A Star Wars Story          5$275,000,0005  $393,151,3476\n    7Dec 15, 20178Star Wars Ep. VIII: The Last Jedi8$262,000,0008$1,332,539,8899\n    +--------------------------------------------------------------------------+\n    ```\n\n* All non-skipped prior automated tests pass. No automated tests added. Unclear that additional test for box ordering would add proportionate value.",
     """rich_3296""": "ISSUE (rich_3296 in Textualize/rich at 0d7e598fe7ea): Overriding the background_color of Syntax drops the padding. Problem: __rich_console__ wraps the segments in Padding using the theme background style instead of the base style, so a background_color override does not extend into the padded area. Fix: build the Padding wrapper with the base style. Tests: test_background_color_override_includes_padding passes.",
@@ -300,6 +300,8 @@ ORACLES = {
     """rich_2725""": "",
     """rich_3296""": "",
 }
+PROMPTS["fastapi_13537"] += "\n" + FILE_HINTS["fastapi_13537"]
+PROMPTS["""rich_3894"""] += "\n" + FILE_HINTS["""rich_3894"""]
 def _parse_blocks(body):
     # SLICE-2 delimiter tolerance: models wrap blocks in fences and vary
     # chevrons/spacing (<<<< SEARCH, <<<<<<< SEARCH). Flex ONLY delimiter
