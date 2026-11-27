@@ -560,7 +560,7 @@ async def main():
                 t2pids.append(pid)
             elif "testrc=1" in res:
                 t2pids.append(pid)
-        for pid in t2pids:
+        for pid in t2pids[:0]:  # H5 T1-only: T2 block intact but never runs
             tail = FAIL_TAILS.get(pid, "")[-1500:]
             fb = ("HARNESS FEEDBACK on your prior BLOCKS for " + pid + ":\n" + tail
                   + "\nResubmit BLOCKS ONLY (same contract: FILE:/SEARCH/======/>>>>>>, SEARCH copied verbatim from LOCALIZED CODE). Minimal fix only.\n\n" + PROMPTS[pid])
