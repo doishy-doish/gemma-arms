@@ -86,8 +86,7 @@ ALLOW = {
 PROMPTS = {}
 for _pid in ISSUES:
     PROMPTS[_pid] = "You are an expert Python engineer. Minimal fix only.\n\n" + ISSUES[_pid] + "\n\nLOCALIZED CODE (verbatim from the base commit; SEARCH blocks must be copied from here byte-for-byte):\n" + SLICES[_pid] + "\n" + CONTRACT
-# O1 (M601): oracle-ADDITION on 15589 only — one variable vs F7. All other pids byte-identical de-oracled.
-PROMPTS["""fastapi_15589"""] += "\n" + ORACLES["""fastapi_15589"""]
+# O1 (M601/M602): oracle-ADDITION moved AFTER ORACLES def (import-order fix; was NameError at collect).
 TASKS = {
     """fastapi_14786""": {"repo": """fastapi/fastapi""", "base": """eacbce24c9d299c6a28110d9fc8ac50f53cddb08""", "test_patch": """--- a/tests/test_security_http_base.py
 +++ b/tests/test_security_http_base.py
@@ -258,6 +257,8 @@ ORACLES = {
     "fastapi_15589": "ORACLE: mark BOTH the converted alias and the original field alias as processed (gold adds processed_keys for the lookup alias AND get_validation_alias(field)); non-empty diff required; empty output = FAIL.",
     """rich_3894""": "",
 }
+# O1 (M601): oracle-ADDITION on 15589 only — one variable vs F7. All other pids byte-identical de-oracled.
+PROMPTS["""fastapi_15589"""] += "\n" + ORACLES["""fastapi_15589"""]
 def _parse_blocks(body):
     # SLICE-2 delimiter tolerance: models wrap blocks in fences and vary
     # chevrons/spacing (<<<< SEARCH, <<<<<<< SEARCH). Flex ONLY delimiter
