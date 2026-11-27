@@ -56,8 +56,8 @@ Fix: track already-visited fields instead of relying on the values dict (as `req
 closes #13533""",
     """rich_3905""": "ISSUE (rich_3905 in Textualize/rich at 96dd4b60e3a7): Disabled Progress must print nothing on non-interactive consoles. Problem: stop() prints unconditionally when non-interactive, leaving a blank line even when disable=True. Fix: gate on disable first (symmetric start/stop). Tests: disabled non-interactive track emits empty string.",
     """fastapi_14873""": """ISSUE (fastapi_14873 in fastapi/fastapi at cd31576d5704):
-APIRouter ignores on_startup/on_shutdown handlers passed as parameters: APIRouter.__init__ assigns self.on_startup/self.on_shutdown BEFORE super().__init__() (Starlette Router), which overwrites them - handlers never run. Regression from Starlette removing local support (Kludex/starlette#3117).
-Fix: assign self.on_startup/self.on_shutdown AFTER super().__init__() (same block relocated below the lifespan/super call); keep default-lifespan behavior. Correct file only: fastapi/routing.py.
+Router ignores startup and shutdown handlers passed as parameters: handlers registered during router setup are overwritten before they can run, so startup and shutdown callbacks never fire. Regression from the upstream framework removing local handler support.
+Fix: register the passed handlers after the router finishes its own initialization (same handler block relocated below the setup call); keep default lifecycle behavior. Apply to the router module only.
 Tests: test_startup_shutdown_handlers_as_parameters (app + router + sub-router startup/shutdown flags all True).""",
     """fastapi_15589""": """ISSUE (fastapi_15589 in fastapi/fastapi at 22b02e26f9e8):
 With convert_underscores=True (the default), underscore headers must NOT be accepted: only hyphen-separated header names validate; apps opt into underscores via convert_underscores=False.
@@ -342,7 +342,7 @@ def _parse_blocks(body):
                 ei = next(j for j in range(mi + 1, n) if _END_RE.match(lines[j]))
             except StopIteration:
                 return None
-            if mi <= i + 1 or ei <= mi + 1:
+            if mi <= i + 1 or ei <= mi:
                 return None
             search = "\n".join(lines[i + 1:mi])
             repl = "\n".join(lines[mi + 1:ei])
@@ -521,7 +521,7 @@ def harness(pid, reply, t):
     sh("cd " + work + " && git apply test_patch.diff 2>&1 | head -5; echo TEST_APPLIED_RC=$?", timeout=60)
     ensure_deps()
     tf = PYTESTS.get(pid, "")
-    trc, tout = sh("cd " + work + " && " + pyenv + " python -m pytest " + tf + " -v --tb=short -W ignore::PendingDeprecationWarning -W ignore::DeprecationWarning -p no:cacheprovider > pytest_out.txt 2>&1; echo PYTEST_RC=$?; tail -15 pytest_out.txt", timeout=300)
+    trc, tout = sh("cd " + work + " && " + pyenv + " python -m pytest " + tf + " -v --tb=short -W ignore::PendingDeprecationWarning -W ignore::DeprecationWarning -p no:cacheprovider -p no:unraisableexception > pytest_out.txt 2>&1; echo PYTEST_RC=$?; tail -15 pytest_out.txt", timeout=300)
     sh("cp " + work + "/pytest_out.txt " + OUT_DIR + "/" + pid + ".pytest.txt", timeout=30)
     import re as _re
     _m = _re.search(r"PYTEST_RC=(\d+)", tout)
