@@ -1,4 +1,4 @@
-"""O4fix PYTESTS-scope for rich_3296 (vs O4 e65f8a7; one variable: single-node test scope; all 8 tasks byte-identical).
+"""O10 oracle-15589 in 8-wide (vs O4fix 9e2bb41; one variable: 15589 oracle in the 8-task mix).
 F5 ladder: A=14786/13537/14258/15589 + B=3905/3894 on anchor base (B3 owed; cite M575).
 Builder: scratch/roulette/roulette-build.js. Anchor fragments byte-verbatim from scratch/duck-6-stagea_6.py; candidate fragments pyDq-escaped from scratch/roulette/spec-*.json (round-trip verified).
 """
@@ -300,6 +300,8 @@ ORACLES = {
     """rich_2725""": "",
     """rich_3296""": "",
 }
+# O10 (M608): oracle-ADDITION on 15589 in 8-wide; all else byte-identical to O4fix.
+PROMPTS["""fastapi_15589"""] += "\n" + ORACLES["""fastapi_15589"""]
 def _parse_blocks(body):
     # SLICE-2 delimiter tolerance: models wrap blocks in fences and vary
     # chevrons/spacing (<<<< SEARCH, <<<<<<< SEARCH). Flex ONLY delimiter
