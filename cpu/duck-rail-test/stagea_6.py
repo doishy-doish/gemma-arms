@@ -13,7 +13,7 @@
 # (5) One variable per fire; pre-reg (predictions + kill rules) BEFORE staging (M632).
 # Lineage: M717-M724. This header is comment-only and changes no behavior.
 # F2P PROBE (M654/M655): model-free. test-only apply -> pytest (expect FAIL), then +gold -> pytest (expect PASS).
-# pid=rich_3518 (M739: 14430-replacement shortlist, base 5ba9cb56e68d). No model calls. Ends: TEST-RESULT lines in log.
+# pid=rich_3882 (M739: 14430-replacement shortlist, base 4d6d631a3d2d). No model calls. Ends: TEST-RESULT lines in log.
 import os, subprocess, urllib.request, base64, sys
 import sys as _sys
 if _sys.version_info[0] < 3:
@@ -23,16 +23,16 @@ print("PY-VERSION " + sys.version.replace(chr(10)," "), flush=True)
 def sh(cmd, timeout=300):
     p = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=timeout)
     return p.returncode, (p.stdout or "") + (p.stderr or "")
-PID = "rich_3518"
+PID = "rich_3882"
 REPO = "Textualize/rich"
-BASE = "5ba9cb56e68dcdf2db50c214d8f1412c8a50761b"
-PYTEST = "tests/test_table.py"
-KEXPR = "test_columns_highlight_added_by_add_row"
-SRCFILE = "rich/table.py"
+BASE = "4d6d631a3d2deddf8405522d4b8c976a6d35726c"
+PYTEST = "tests/test_prompt.py"
+KEXPR = "test_prompt_confirm_markup"
+SRCFILE = "rich/prompt.py"
 IMPORTPKG = "rich"
 PIPPKGS = "fastapi pytest pytest-timeout requests python-multipart annotated-doc starlette==0.37.2 httpx==0.27.2 inline-snapshot sqlalchemy orjson ujson dirty_equals"
-TESTDIFF = base64.b64decode("LS0tIGEvdGVzdHMvdGVzdF90YWJsZS5weQorKysgYi90ZXN0cy90ZXN0X3RhYmxlLnB5CkBAIC0zNjMsNiArMzYzLDI1IEBAIGRlZiB0ZXN0X3BsYWNlbWVudF90YWJsZV9ib3hfZWxlbWVudHMoc2hvd19oZWFkZXIsIHNob3dfZm9vdGVyLCBleHBlY3RlZCk6CiAgICAgYXNzZXJ0IG91dHB1dCA9PSBleHBlY3RlZAogCiAKK2RlZiB0ZXN0X2NvbHVtbnNfaGlnaGxpZ2h0X2FkZGVkX2J5X2FkZF9yb3coKSAtPiBOb25lOgorICAgICIiIlJlZ3Jlc3Npb24gdGVzdCBmb3IgaHR0cHM6Ly9naXRodWIuY29tL1RleHR1YWxpemUvcmljaC9pc3N1ZXMvMzUxNyIiIgorICAgIHRhYmxlID0gVGFibGUoc2hvd19oZWFkZXI9RmFsc2UsIGhpZ2hsaWdodD1UcnVlKQorICAgIHRhYmxlLmFkZF9yb3coIjEiLCByZXByKCJGT08iKSkKKworICAgIGFzc2VydCB0YWJsZS5jb2x1bW5zWzBdLmhpZ2hsaWdodCA9PSB0YWJsZS5oaWdobGlnaHQKKyAgICBhc3NlcnQgdGFibGUuY29sdW1uc1sxXS5oaWdobGlnaHQgPT0gdGFibGUuaGlnaGxpZ2h0CisKKyAgICBjb25zb2xlID0gQ29uc29sZShyZWNvcmQ9VHJ1ZSkKKyAgICBjb25zb2xlLnByaW50KHRhYmxlKQorICAgIG91dHB1dCA9IGNvbnNvbGUuZXhwb3J0X3RleHQoc3R5bGVzPVRydWUpCisgICAgcHJpbnQocmVwcihvdXRwdXQpKQorCisgICAgZXhwZWN0ZWQgPSAoCisgICAgICAgICLilIzilIDilIDilIDilKzilIDilIDilIDilIDilIDilIDilIDilJBcbuKUgiBceDFiWzE7MzZtMVx4MWJbMG0g4pSCIFx4MWJbMzJtJ0ZPTydceDFiWzBtIOKUglxu4pSU4pSA4pSA4pSA4pS04pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSYXG4iCisgICAgKQorICAgIGFzc2VydCBvdXRwdXQgPT0gZXhwZWN0ZWQKKworCiBpZiBfX25hbWVfXyA9PSAiX19tYWluX18iOgogICAgIHJlbmRlciA9IHJlbmRlcl90YWJsZXMoKQogICAgIHByaW50KHJlbmRlcik=")
-FIXDIFF = base64.b64decode("LS0tIGEvcmljaC90YWJsZS5weQorKysgYi9yaWNoL3RhYmxlLnB5CkBAIC00NTEsNyArNDUxLDcgQEAgZGVmIGFkZF9jZWxsKGNvbHVtbjogQ29sdW1uLCByZW5kZXJhYmxlOiAiUmVuZGVyYWJsZVR5cGUiKSAtPiBOb25lOgogICAgICAgICAgICAgXQogICAgICAgICBmb3IgaW5kZXgsIHJlbmRlcmFibGUgaW4gZW51bWVyYXRlKGNlbGxfcmVuZGVyYWJsZXMpOgogICAgICAgICAgICAgaWYgaW5kZXggPT0gbGVuKGNvbHVtbnMpOgotICAgICAgICAgICAgICAgIGNvbHVtbiA9IENvbHVtbihfaW5kZXg9aW5kZXgpCisgICAgICAgICAgICAgICAgY29sdW1uID0gQ29sdW1uKF9pbmRleD1pbmRleCwgaGlnaGxpZ2h0PXNlbGYuaGlnaGxpZ2h0KQogICAgICAgICAgICAgICAgIGZvciBfIGluIHNlbGYucm93czoKICAgICAgICAgICAgICAgICAgICAgYWRkX2NlbGwoY29sdW1uLCBUZXh0KCIiKSkKICAgICAgICAgICAgICAgICBzZWxmLmNvbHVtbnMuYXBwZW5kKGNvbHVtbik=")
+TESTDIFF = base64.b64decode("LS0tIGEvdGVzdHMvdGVzdF9wcm9tcHQucHkKKysrIGIvdGVzdHMvdGVzdF9wcm9tcHQucHkKQEAgLTExMSwzICsxMTEsMTYgQEAgZGVmIHRlc3RfcHJvbXB0X2NvbmZpcm1fZGVmYXVsdCgpOgogICAgIG91dHB1dCA9IGNvbnNvbGUuZmlsZS5nZXR2YWx1ZSgpCiAgICAgcHJpbnQocmVwcihvdXRwdXQpKQogICAgIGFzc2VydCBvdXRwdXQgPT0gZXhwZWN0ZWQKKworCitkZWYgdGVzdF9wcm9tcHRfY29uZmlybV9tYXJrdXAoKToKKyAgICBJTlBVVCA9ICJmb29cbk5PXG55IgorICAgIGNvbnNvbGUgPSBDb25zb2xlKGZpbGU9aW8uU3RyaW5nSU8oKSwgbWFya3VwPUZhbHNlKQorICAgIGFuc3dlciA9IENvbmZpcm0uYXNrKAorICAgICAgICAiY29udGludWUiLCBjb25zb2xlPWNvbnNvbGUsIHN0cmVhbT1pby5TdHJpbmdJTyhJTlBVVCksIGRlZmF1bHQ9VHJ1ZQorICAgICkKKyAgICBhc3NlcnQgYW5zd2VyIGlzIFRydWUKKyAgICBleHBlY3RlZCA9ICJjb250aW51ZSBbeS9uXSAoeSk6IFBsZWFzZSBlbnRlciBZIG9yIE5cbmNvbnRpbnVlIFt5L25dICh5KTogUGxlYXNlIGVudGVyIFkgb3IgTlxuY29udGludWUgW3kvbl0gKHkpOiAiCisgICAgb3V0cHV0ID0gY29uc29sZS5maWxlLmdldHZhbHVlKCkKKyAgICBwcmludChyZXByKG91dHB1dCkpCisgICAgYXNzZXJ0IG91dHB1dCA9PSBleHBlY3RlZA==")
+FIXDIFF = base64.b64decode("LS0tIGEvcmljaC9wcm9tcHQucHkKKysrIGIvcmljaC9wcm9tcHQucHkKQEAgLTI2Miw3ICsyNjIsNyBAQCBkZWYgb25fdmFsaWRhdGVfZXJyb3Ioc2VsZiwgdmFsdWU6IHN0ciwgZXJyb3I6IEludmFsaWRSZXNwb25zZSkgLT4gTm9uZToKICAgICAgICAgICAgIHZhbHVlIChzdHIpOiBTdHJpbmcgZW50ZXJlZCBieSB1c2VyLgogICAgICAgICAgICAgZXJyb3IgKEludmFsaWRSZXNwb25zZSk6IEV4Y2VwdGlvbiBpbnN0YW5jZSB0aGUgaW5pdGlhdGVkIHRoZSBlcnJvci4KICAgICAgICAgIiIiCi0gICAgICAgIHNlbGYuY29uc29sZS5wcmludChlcnJvcikKKyAgICAgICAgc2VsZi5jb25zb2xlLnByaW50KGVycm9yLCBtYXJrdXA9VHJ1ZSkKIAogICAgIGRlZiBwcmVfcHJvbXB0KHNlbGYpIC0+IE5vbmU6CiAgICAgICAgICIiIkhvb2sgdG8gZGlzcGxheSBzb21ldGhpbmcgYmVmb3JlIHRoZSBwcm9tcHQuIiIi")
 print("TYPES " + str(type(TESTDIFF)) + " " + str(type(FIXDIFF)) + " lens " + str(len(TESTDIFF)) + "/" + str(len(FIXDIFF)), flush=True)
 if isinstance(TESTDIFF, str): TESTDIFF = TESTDIFF.encode("latin-1")
 if isinstance(FIXDIFF, str): FIXDIFF = FIXDIFF.encode("latin-1")
