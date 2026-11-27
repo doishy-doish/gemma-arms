@@ -551,12 +551,12 @@ async def main():
         print("SCORED-COLLECTED " + pid + " " + res, flush=True)
     # TURN-2 (SLICE-2): ONE follow-up in the SAME session for actionable
     # harness failures only: pytest_rc=1 (real test failures, e.g. 7427
-    # prelocalhost tail), search-miss, empty. Env/collection failures
-    # (pytest_rc 2/4/5) are NOT model faults — no retry, no variance burn.
+    # prelocalhost tail), search-miss, empty, testrc=2 collection-break
+    # (pytest_rc 4/5 still NOT retried — env faults, no variance burn).
     try:
         t2pids = []
         for pid, res in out:
-            if res.startswith("search-miss") or res.startswith("empty") or res.startswith("wrong-file"):
+            if res.startswith("search-miss") or res.startswith("empty") or res.startswith("wrong-file") or "testrc=2" in res:
                 t2pids.append(pid)
             elif "testrc=1" in res:
                 t2pids.append(pid)
