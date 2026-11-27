@@ -1,4 +1,5 @@
 # REQUESTS HALVES B F5 (M746 on tip cc2a9486): f4 + BASE-ERRORBODY (ERROR body grep, cause-assert) + 6589/6592 targeted -k (gold whole-file timeout x2 killed). Model-free, no rail, no secrets.
+# MISTAKES-IN-FILE: (1) no backslashes in sh lines, use -e flags (M748); (2) patches via _nl (M693); (3) whole-file gold pytest banned, targeted -k only (M745); (4) collection errors need ERROR-body grep (M745); (5) no push without readback full-match (M626).
 # No rail, no secrets, no model calls. Deterministic: same tarball + same diffs = same result.
 # Per task: TEST-APPLY (expect RC=0) -> scoped pytest (BASE-FAIL-PROOF + BASE-SUMMARY) -> FIX-APPLY (RC=0) -> COMPILE -> TEST-RESULT.
 # Terminal apparatus assert: every task emits exactly one TEST-RESULT line (M662). Results + per-pid files in OUT_DIR (/tmp/duck6_out).
@@ -57,7 +58,7 @@ for pid, t in TASKS.items():
         _bfbrc, _bfbout = sh("grep -aE \"^FAILED|^ERROR\" " + work + "/basefail_out.txt", timeout=30)
         if _bfbout.strip():
             print("BASE-FAILURES " + pid + " " + _bfbout[-800:], flush=True)
-        _eerc, _eeout = sh("grep -aB2 -A8 \"ModuleError\\|ModuleNotFoundError\\|ImportError\\|Error\\" " + work + "/basefail_out.txt | head -30", timeout=30)
+        _eerc, _eeout = sh("grep -aB2 -A8 -e ModuleError -e ImportError " + work + "/basefail_out.txt | head -30", timeout=30)
         if _eeout.strip():
             print("BASE-ERRORBODY " + pid + " " + _eeout[-1500:], flush=True)
     open(work + "/fix.diff", "w").write(_nl(base64.b64decode(t["fixB64"]).decode()))
