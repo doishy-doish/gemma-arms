@@ -1,3 +1,16 @@
+# HOW THIS VEHICLE IS SUPPOSED TO BE WRITTEN (M724, durable just-in-case note).
+# (1) Prompts reuse the proven CONTRACT constant VERBATIM (by reference, never paraphrased).
+#     M723: a hand-assembled paraphrase dropped the machine-readable FILE:/SEARCH shape and
+#     voided a full 6-slot rail (0/6 measured the prompt bug, not difficulty).
+# (2) Any reply-parser change ships with a parse-smoke: golden sample (must score) +
+#     adversarial prose (must void) through the SHIPPED parser path before push (M672/M723).
+# (3) Dependencies are fleet-wide: a new pip/test package lands in the rail ensure_deps AND
+#     every staged F2P PIPPKGS AND every staged rail copy, grep-verified same turn (M722:
+#     per-vehicle patching let inline_snapshot/sqlalchemy kill slots after M709/M495 named them).
+# (4) Evidence lines print the tool own rc (e.g. echo RC=$? right after the tool, before tail)
+#     or a grep summary -- never the tail pipe own rc; asserts check FULL captured text (M666/M721e).
+# (5) One variable per fire; pre-reg (predictions + kill rules) BEFORE staging (M632).
+# Lineage: M717-M724. This header is comment-only and changes no behavior.
 """T3f-D 14485-swap on t3f-5077 tip (M719; one variable: 5077 slot -> 14485 stringified-annotation slot; anchors byte-identical).
 F5 ladder: A=14786/13537/14873(T3c-slot-swap)/15589 + B=3905/3894 on anchor base (B3 owed; cite M575). // T3c slot-swap M667
 Builder: scratch/roulette/roulette-build.js. Anchor fragments byte-verbatim from scratch/duck-6-stagea_6.py; candidate fragments pyDq-escaped from scratch/roulette/spec-*.json (round-trip verified).
@@ -380,7 +393,7 @@ def ensure_deps():
         # in fastapi src). Agent never emits it; eval image has it baked. Without it every
         # pytest dies at collection (0/6 verified). Harness-only line (runners are online);
         # the submission bundle itself must still assume offline (M495a).
-        sh("pip install -q fastapi pytest pytest-timeout requests python-multipart annotated-doc starlette==0.37.2 httpx==0.27.2 2>&1 | tail -1", timeout=300)
+        sh("pip install -q fastapi pytest pytest-timeout requests python-multipart annotated-doc starlette==0.37.2 httpx==0.27.2 inline-snapshot sqlalchemy 2>&1 | tail -1", timeout=300)
         sh("pip install -q tornado pyramid webtest pygments 2>&1 | tail -1", timeout=300)
         _DEPS_OK = True
 
