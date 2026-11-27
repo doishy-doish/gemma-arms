@@ -42,6 +42,10 @@ SLICES = {
     """rich_3894""": "    def __rich__(self) -> Panel:\n        return Panel.fit(\n            Group(*self._render()),\n            title=self.title,\n            border_style=\"scope.border\",\n            padding=(0, 1),\n        )\n\n    def _get_signature(self, name: str, obj: Any) -> Optional[Text]:\n        \"\"\"Get a signature for a callable.\"\"\"\n        try:\n            _signature = str(signature(obj)) + \":\"\n        except ValueError:\n            _signature = \"(...)\"\n        except TypeError:\n            return None\n\n        source_filename: Optional[str] = None\n        try:\n            source_filename = getfile(obj)\n        except (OSError, TypeError):\n            # OSError is raised if obj has no source file, e.g. when defined in REPL.\n            pass\n\n        callable_name = Text(name, style=\"inspect.callable\")\n        if source_filename:\n            callable_name.stylize(f\"link file://{source_filename}\")\n        signature_text = self.highlighter(_signature)\n\n        qualname = name or getattr(obj, \"__qualname__\", name)\n\n        # If obj is a module, there may be classes (which are callable) to display\n        if inspect.isclass(obj):\n            prefix = \"class\"\n        elif inspect.iscoroutinefunction(obj):\n            prefix = \"async def\"",
 # R6-M717 RETIRED SLICES rich_2725 — return-to-6 (same-6 ladder); line-count preserved.
 # R6-M717 RETIRED SLICES rich_3296 — return-to-6 (same-6 ladder); line-count preserved.
+    """rich_2725""": "    def _render(\n        self, console: \"Console\", options: \"ConsoleOptions\", widths: List[int]\n    ) -> \"RenderResult\":\n        table_style = console.get_style(self.style or \"\")\n\n        border_style = table_style + console.get_style(self.border_style or \"\")\n        _column_cells = (\n            self._get_cells(console, column_index, column)\n            for column_index, column in enumerate(self.columns)\n        )\n        row_cells: List[Tuple[_Cell, ...]] = list(zip(*_column_cells))\n        _box = (\n            self.box.substitute(\n                options, safe=pick_bool(self.safe_box, console.safe_box)\n            )\n            if self.box\n            else None\n        )\n        _box = _box.get_plain_headed_box() if _box and not self.show_header else _box\n\n        new_line = Segment.line()\n\n        columns = self.columns\n        show_header = self.show_header\n        show_footer = self.show_footer\n        show_edge = self.show_edge\n        show_lines = self.show_lines\n        leading = self.leading\n\n        _Segment = Segment\n        if _box:\n            box_segments = [\n                (\n                    _Segment(_box.head_left, border_style),\n                    _Segment(_box.head_right, border_style),\n                    _Segment(_box.head_vertical, border_style),\n                ),\n                (\n                    _Segment(_box.foot_left, border_style),\n                    _Segment(_box.foot_right, border_style),\n                    _Segment(_box.foot_vertical, border_style),\n                ),\n                (\n                    _Segment(_box.mid_left, border_style),\n                    _Segment(_box.mid_right, border_style),\n                    _Segment(_box.mid_vertical, border_style),\n                ),\n            ]\n            if show_edge:\n                yield _Segment(_box.get_top(widths), border_style)\n                yield new_line\n        else:\n            box_segments = []",
+    """rich_3296""": "        self, console: \"Console\", options: \"ConsoleOptions\"\n    ) -> \"Measurement\":\n        _, right, _, left = Padding.unpack(self.padding)\n        padding = left + right\n        if self.code_width is not None:\n            width = self.code_width + self._numbers_column_width + padding + 1\n            return Measurement(self._numbers_column_width, width)\n        lines = self.code.splitlines()\n        width = (\n            self._numbers_column_width\n            + padding\n            + (max(cell_len(line) for line in lines) if lines else 0)\n        )\n        if self.line_numbers:\n            width += 1\n        return Measurement(self._numbers_column_width, width)\n\n    def __rich_console__(\n        self, console: Console, options: ConsoleOptions\n    ) -> RenderResult:\n        segments = Segments(self._get_syntax(console, options))\n        if self.padding:\n            yield Padding(\n                segments, style=self._theme.get_background_style(), pad=self.padding\n            )\n        else:\n            yield segments\n\n    def _get_syntax(\n        self,\n        console: Console,\n        options: ConsoleOptions,\n    ) -> Iterable[Segment]:\n        \"\"\"\n        Get the Segments for the Syntax object, excluding any vertical/horizontal padding\n        \"\"\"\n        transparent_background = self._get_base_style().transparent_background\n        code_width = (\n            (\n                (options.max_width - self._numbers_column_width - 1)",
+    """fastapi_14794""": """    elif lenient_issubclass(type_annotation, WebSocket):\n        dependant.websocket_param_name = param_name\n        return True\n    elif lenient_issubclass(type_annotation, HTTPConnection):\n        dependant.http_connection_param_name = param_name\n        return True\n    elif lenient_issubclass(type_annotation, Response):\n        dependant.response_param_name = param_name\n        return True\n    elif lenient_issubclass(type_annotation, StarletteBackgroundTasks):\n        dependant.background_tasks_param_name = param_name\n        return True\n    elif lenient_issubclass(type_annotation, SecurityScopes):\n        dependant.security_scopes_param_name = param_name\n        return True\n    return None\n\n\n@dataclass\nclass ParamDetails:\n    type_annotation: Any\n    depends: Optional[params.Depends]\n    field: Optional[ModelField]\n\n\ndef analyze_param(\n    *,\n    param_name: str,\n    annotation: Any,\n    value: Any,\n    is_path_param: bool,\n) -> ParamDetails:\n    field_info = None\n    depends = None\n    type_annotation: Any = Any\n    use_annotation: Any = Any\n    if annotation is not inspect.Signature.empty:\n        use_annotation = annotation\n        type_annotation = annotation\n    # Extract Annotated info\n    if get_origin(use_annotation) is Annotated:\n        annotated_args = get_args(annotation)\n        type_annotation = annotated_args[0]\n        fastapi_annotations = [\n            arg\n            for arg in annotated_args[1:]\n            if isinstance(arg, (FieldInfo, params.Depends))\n        ]\n        fastapi_specific_annotations = [\n            arg\n            for arg in fastapi_annotations\n            if isinstance(\n                arg,\n                (\n                    params.Param,\n                    params.Body,\n                    params.Depends,\n                ),\n            )\n        ]\n        if fastapi_specific_annotations:\n            fastapi_annotation: Union[FieldInfo, params.Depends, None] = (\n                fastapi_specific_annotations[-1]\n            )\n        else:\n            fastapi_annotation = None\n        # Set default for Annotated FieldInfo\n        if isinstance(fastapi_annotation, FieldInfo):\n            # Copy `field_info` because we mutate `field_info.default` below.\n            field_info = copy_field_info(\n                field_info=fastapi_annotation,\n                annotation=use_annotation,\n            )\n            assert (\n                field_info.default == Undefined or field_info.default == RequiredParam\n            ), (\n                f\"`{field_info.__class__.__name__}` default value cannot be set in\"\n                f\" `Annotated` for {param_name!r}. Set the default value with `=` instead.\"\n            )\n            if value is not inspect.Signature.empty:\n                assert not is_path_param, \"Path parameters cannot have default values\"\n                field_info.default = value\n            else:\n                field_info.default = RequiredParam\n        # Get Annotated Depends\n        elif isinstance(fastapi_annotation, params.Depends):\n            depends = fastapi_annotation\n    # Get Depends from default value\n    if isinstance(value, params.Depends):\n        assert depends is None, (\n            \"Cannot specify `Depends` in `Annotated` and default value\"\n            f\" together for {param_name!r}\"\n        )\n        assert field_info is None, (\n            \"Cannot specify a FastAPI annotation in `Annotated` and `Depends` as a\"\n            f\" default value together for {param_name!r}\"\n        )\n        depends = value\n    # Get FieldInfo from default value\n    elif isinstance(value, FieldInfo):\n        assert field_info is None, (\n            \"Cannot specify FastAPI annotations in `Annotated` and default value\"\n            f\" together for {param_name!r}\"\n        )\n        field_info = value\n        if isinstance(field_info, FieldInfo):\n            field_info.annotation = type_annotation\n\n    # Get Depends from type annotation\n""" """    if depends is not None and depends.dependency is None:\n        # Copy `depends` before mutating it\n        depends = copy(depends)\n        depends = dataclasses.replace(depends, dependency=type_annotation)\n\n    # Handle non-param type annotations like Request\n    if lenient_issubclass(\n        type_annotation,\n        (\n            Request,\n            WebSocket,\n            HTTPConnection,\n            Response,\n            StarletteBackgroundTasks,\n            SecurityScopes,\n        ),\n    ):\n        assert depends is None, f\"Cannot specify `Depends` for type {type_annotation!r}\"\n        assert field_info is None, (\n            f\"Cannot specify FastAPI annotation for type {type_annotation!r}\"\n        )\n    # Handle default assignations, neither field_info nor depends was not found in Annotated nor default value\n    elif field_info is None and depends is None:\n        default_value = value if value is not inspect.Signature.empty else RequiredParam\n        if is_path_param:\n            # We might check here that `default_value is RequiredParam`, but the fact is that the same\n            # parameter might sometimes be a path parameter and sometimes not. See\n            # `tests/test_infer_param_optionality.py` for an example.\n            field_info = params.Path(annotation=use_annotation)\n        elif is_uploadfile_or_nonable_uploadfile_annotation(\n            type_annotation\n        ) or is_uploadfile_sequence_annotation(type_annotation):\n            field_info = params.File(annotation=use_annotation, default=default_value)\n        elif not field_annotation_is_scalar(annotation=type_annotation):\n            field_info = params.Body(annotation=use_annotation, default=default_value)\n        else:\n            field_info = params.Query(annotation=use_annotation, default=default_value)\n\n    field = None\n    # It's a field_info, not a dependency\n""",
+    """fastapi_14485""": """def _get_flat_fields_from_params(fields: List[ModelField]) -> List[ModelField]:\n    if not fields:\n        return fields\n    first_field = fields[0]\n    if len(fields) == 1 and _is_model_class(first_field.type_):\n        fields_to_extract = get_cached_model_fields(first_field.type_)\n        return fields_to_extract\n    return fields\n\n\ndef get_flat_params(dependant: Dependant) -> List[ModelField]:\n    flat_dependant = get_flat_dependant(dependant, skip_repeats=True)\n    path_params = _get_flat_fields_from_params(flat_dependant.path_params)\n    query_params = _get_flat_fields_from_params(flat_dependant.query_params)\n    header_params = _get_flat_fields_from_params(flat_dependant.header_params)\n    cookie_params = _get_flat_fields_from_params(flat_dependant.cookie_params)\n    return path_params + query_params + header_params + cookie_params\n\n\ndef get_typed_signature(call: Callable[..., Any]) -> inspect.Signature:\n    if sys.version_info >= (3, 10):\n        signature = inspect.signature(call, eval_str=True)\n    else:\n        signature = inspect.signature(call)\n    unwrapped = inspect.unwrap(call)\n    globalns = getattr(unwrapped, \"__globals__\", {})\n    typed_params = [\n        inspect.Parameter(\n            name=param.name,\n            kind=param.kind,\n            default=param.default,\n            annotation=get_typed_annotation(param.annotation, globalns),\n        )\n        for param in signature.parameters.values()\n    ]\n    typed_signature = inspect.Signature(typed_params)\n    return typed_signature\n\n\ndef get_typed_annotation(annotation: Any, globalns: Dict[str, Any]) -> Any:\n    if isinstance(annotation, str):\n        annotation = ForwardRef(annotation)\n        annotation = evaluate_forwardref(annotation, globalns, globalns)\n        if annotation is type(None):\n            return None\n    return annotation\n\n\ndef get_typed_return_annotation(call: Callable[..., Any]) -> Any:\n    if sys.version_info >= (3, 10):\n        signature = inspect.signature(call, eval_str=True)\n    else:\n        signature = inspect.signature(call)\n    unwrapped = inspect.unwrap(call)\n    annotation = signature.return_annotation\n\n    if annotation is inspect.Signature.empty:\n        return None\n\n    globalns = getattr(unwrapped, \"__globals__\", {})\n    return get_typed_annotation(annotation, globalns)\n\n\ndef get_dependant(""",
 }
 ISSUES = {
     """fastapi_14786""": """ISSUE (fastapi_14786 in fastapi/fastapi at eacbce24c9d2):
@@ -65,6 +69,16 @@ Non-empty real fix required.""",
     """rich_3894""": "ISSUE (rich_3894 in Textualize/rich at 4d6d631a3d2d): inspect() crashes on unusual __qualname__ (non-str, e.g. lru_cache + __slots__). Fix: isinstance check, fall back to __name__ then name. Tests: test_qualname_in_slots passes without exception.",
 # R6-M717 RETIRED ISSUES rich_2725 — return-to-6 (same-6 ladder); line-count preserved.
 # R6-M717 RETIRED ISSUES rich_3296 — return-to-6 (same-6 ladder); line-count preserved.
+    """rich_2725""": "ISSUE (rich_2725 in Textualize/rich at 577def22dd83): fix table rendering order of box elements.\n\nfix table rendering order of box elements\n\n## Description\n\n* Previously \"mid\" box elements appeared in last line of table (footer), while \"footer\" box elements appeared mid table body. Reversed that order so mid is truly mid, footer is truly footer.\n* Tested with:\n\n    ```\n    table.box.head_left = '1'\n    table.box.head_vertical = '2'\n    table.box.head_right = '3'\n\n    table.box.mid_left = '4'\n    table.box.mid_vertical = '5'\n    table.box.mid_right = '6'\n\n    table.box.foot_left = '7'\n    table.box.foot_vertical = '8'\n    table.box.foot_right = '9'\n    ```\n\n  After change, correct ordering:\n\n    ```\n    +--------------------------------------------------------------------------+\n    1Date        2Title                            2  Production2    Box Office3\n    |------------ --------------------------------- ------------ --------------|\n    4Dec 20, 20195Star Wars: The Rise of Skywalker 5$275,000,0005  $375,126,1186\n    4May 25, 20185Solo: A Star Wars Story          5$275,000,0005  $393,151,3476\n    7Dec 15, 20178Star Wars Ep. VIII: The Last Jedi8$262,000,0008$1,332,539,8899\n    +--------------------------------------------------------------------------+\n    ```\n\n* All non-skipped prior automated tests pass. No automated tests added. Unclear that additional test for box ordering would add proportionate value.",
+    """rich_3296""": "ISSUE (rich_3296 in Textualize/rich at 0d7e598fe7ea): Overriding the background_color of Syntax drops the padding. Problem: __rich_console__ wraps the segments in Padding using the theme background style instead of the base style, so a background_color override does not extend into the padded area. Fix: build the Padding wrapper with the base style. Tests: test_background_color_override_includes_padding passes.",
+    """fastapi_14794""": """ISSUE (fastapi_14794 in fastapi/fastapi at 464c359bb03f):
+Using Response as a dependency annotation fails: analyze_param() applies Response special-type handling before checking for Depends, raising "AssertionError: Cannot specify Depends for type Response" (starlette Response). Breaks Annotated[Response, Depends(modify_response)] and Response defaults.
+Fix: in analyze_param(), check for Depends before applying Response special handling; when Depends is present, call the dependency normally and use its return value. Correct file only: fastapi/dependencies/utils.py.
+Tests: test_response_with_depends_annotated (plus 6 more in tests/test_response_dependency.py) passes.""",
+    """fastapi_14485""": """ISSUE (fastapi_14485 in fastapi/fastapi at 60699f306b67):",
+"Stringified annotations under `if TYPE_CHECKING` never evaluate: get_typed_signature eval_str=True raises NameError on ForwardRef, so test_stringified_annotation_dependency fails (14464/14484).",
+"Fix: add _get_signature helper (try eval_str=True, fall back to plain signature on NameError); use it in get_typed_signature + get_typed_return_annotation. Correct file only: fastapi/dependencies/utils.py.",
+"Tests: test_get + test_openapi_schema in tests/test_stringified_annotation_dependency.py pass.""",
 }
 CONTRACT = """OUTPUT CONTRACT (follow exactly):
 - Output edit blocks only: no prose, no fences, no explanation.
@@ -88,6 +102,10 @@ ALLOW = {
     """rich_3894""": ["rich/_inspect.py"],
 # R6-M717 RETIRED ALLOW rich_2725 — return-to-6 (same-6 ladder); line-count preserved.
 # R6-M717 RETIRED ALLOW rich_3296 — return-to-6 (same-6 ladder); line-count preserved.
+    """rich_2725""": ["rich/table.py"],
+    """rich_3296""": ["""rich/syntax.py"""],
+    """fastapi_14794""": ["""fastapi/dependencies/utils.py"""],
+    """fastapi_14485""": ["""fastapi/dependencies/utils.py"""],
 }
 PROMPTS = {}
 for _pid in ISSUES:
@@ -268,6 +286,40 @@ TASKS = {
 # R6-M717 RETIRED TASKS rich_3296 block line 29/31 — return-to-6; line-count preserved.
 # R6-M717 RETIRED TASKS rich_3296 block line 30/31 — return-to-6; line-count preserved.
 # R6-M717 RETIRED TASKS rich_3296 block line 31/31 — return-to-6; line-count preserved.
+    """rich_2725""": {"repo": "Textualize/rich", "base": "577def22dd83", "test_patch": "--- a/tests/test_table.py\n+++ b/tests/test_table.py\n@@ -1,6 +1,7 @@\n # encoding=utf-8\n \n import io\n+from textwrap import dedent\n \n import pytest\n \n@@ -234,6 +235,134 @@ def test_section():\n     assert output == expected\n \n \n+@pytest.mark.parametrize(\n+    \"show_header,show_footer,expected\",\n+    [\n+        (\n+            False,\n+            False,\n+            dedent(\n+                \"\"\"\n+                abbbbbcbbbbbbbbbcbbbbcbbbbbd\n+                1Dec  2Skywalker2275M2375M 3\n+                4May  5Solo     5275M5393M 6\n+                ijjjjjkjjjjjjjjjkjjjjkjjjjjl\n+                7Dec  8Last Jedi8262M81333M9\n+                qrrrrrsrrrrrrrrrsrrrrsrrrrrt\n+                \"\"\"\n+            ).lstrip(),\n+        ),\n+        (\n+            True,\n+            False,\n+            dedent(\n+                \"\"\"\n+                abbbbbcbbbbbbbbbcbbbbcbbbbbd\n+                1Month2Nickname 2Cost2Gross3\n+                efffffgfffffffffgffffgfffffh\n+                4Dec  5Skywalker5275M5375M 6\n+                4May  5Solo     5275M5393M 6\n+                ijjjjjkjjjjjjjjjkjjjjkjjjjjl\n+                7Dec  8Last Jedi8262M81333M9\n+                qrrrrrsrrrrrrrrrsrrrrsrrrrrt\n+                \"\"\"\n+            ).lstrip(),\n+        ),\n+        (\n+            False,\n+            True,\n+            dedent(\n+                \"\"\"\n+                abbbbbcbbbbbbbbbcbbbbcbbbbbd\n+                1Dec  2Skywalker2275M2375M 3\n+                4May  5Solo     5275M5393M 6\n+                ijjjjjkjjjjjjjjjkjjjjkjjjjjl\n+                4Dec  5Last Jedi5262M51333M6\n+                mnnnnnonnnnnnnnnonnnnonnnnnp\n+                7MONTH8NICKNAME 8COST8GROSS9\n+                qrrrrrsrrrrrrrrrsrrrrsrrrrrt\n+                \"\"\"\n+            ).lstrip(),\n+        ),\n+        (\n+            True,\n+            True,\n+            dedent(\n+                \"\"\"\n+                abbbbbcbbbbbbbbbcbbbbcbbbbbd\n+                1Month2Nickname 2Cost2Gross3\n+                efffffgfffffffffgffffgfffffh\n+                4Dec  5Skywalker5275M5375M 6\n+                4May  5Solo     5275M5393M 6\n+                ijjjjjkjjjjjjjjjkjjjjkjjjjjl\n+                4Dec  5Last Jedi5262M51333M6\n+                mnnnnnonnnnnnnnnonnnnonnnnnp\n+                7MONTH8NICKNAME 8COST8GROSS9\n+                qrrrrrsrrrrrrrrrsrrrrsrrrrrt\n+                \"\"\"\n+            ).lstrip(),\n+        ),\n+    ],\n+)\n+def test_placement_table_box_elements(show_header, show_footer, expected):\n+    \"\"\"Ensure box drawing characters correctly positioned.\"\"\"\n+\n+    table = Table(\n+        box=box.ASCII, show_header=show_header, show_footer=show_footer, padding=0\n+    )\n+\n+    # content rows indicated by numerals, pure dividers by letters\n+    table.box.__dict__.update(\n+        top_left=\"a\",\n+        top=\"b\",\n+        top_divider=\"c\",\n+        top_right=\"d\",\n+        head_left=\"1\",\n+        head_vertical=\"2\",\n+        head_right=\"3\",\n+        head_row_left=\"e\",\n+        head_row_horizontal=\"f\",\n+        head_row_cross=\"g\",\n+        head_row_right=\"h\",\n+        mid_left=\"4\",\n+        mid_vertical=\"5\",\n+        mid_right=\"6\",\n+        row_left=\"i\",\n+        row_horizontal=\"j\",\n+        row_cross=\"k\",\n+        row_right=\"l\",\n+        foot_left=\"7\",\n+        foot_vertical=\"8\",\n+        foot_right=\"9\",\n+        foot_row_left=\"m\",\n+        foot_row_horizontal=\"n\",\n+        foot_row_cross=\"o\",\n+        foot_row_right=\"p\",\n+        bottom_left=\"q\",\n+        bottom=\"r\",\n+        bottom_divider=\"s\",\n+        bottom_right=\"t\",\n+    )\n+\n+    # add content - note headers title case, footers upper case\n+    table.add_column(\"Month\", \"MONTH\", width=5)\n+    table.add_column(\"Nickname\", \"NICKNAME\", width=9)\n+    table.add_column(\"Cost\", \"COST\", width=4)\n+    table.add_column(\"Gross\", \"GROSS\", width=5)\n+\n+    table.add_row(\"Dec\", \"Skywalker\", \"275M\", \"375M\")\n+    table.add_row(\"May\", \"Solo\", \"275M\", \"393M\")\n+    table.add_section()\n+    table.add_row(\"Dec\", \"Last Jedi\", \"262M\", \"1333M\")\n+\n+    console = Console(record=True, width=28)\n+    console.print(table)\n+    output = console.export_text()\n+    print(repr(output))\n+\n+    assert output == expected\n+\n+\n if __name__ == \"__main__\":\n     render = render_tables()\n     print(render)\n"},
+    """rich_3296""": {"""repo""": """Textualize/rich""", """base""": """0d7e598fe7ea""", "test_patch": r'''
+diff --git a/tests/test_syntax.py b/tests/test_syntax.py
+index 37cc293eb4..bbd4c7a5cb 100644
+--- a/tests/test_syntax.py
++++ b/tests/test_syntax.py
+@@ -406,6 +406,23 @@ def test_syntax_measure():
+     assert code.__rich_measure__(console, console.options) == Measurement(3, 24)
+ 
+ 
++def test_background_color_override_includes_padding():
++    """Regression test for https://github.com/Textualize/rich/issues/3295"""
++
++    syntax = Syntax(
++        "x = 1",
++        lexer="python",
++        padding=(1, 3),
++        background_color="red",
++    )
++    result = render(syntax)
++    print(repr(result))
++    assert (
++        result
++        == "\x1b[41m                                                                                                    \x1b[0m\n\x1b[41m   \x1b[0m\x1b[38;2;248;248;242;41mx\x1b[0m\x1b[38;2;248;248;242;41m \x1b[0m\x1b[38;2;255;70;137;41m=\x1b[0m\x1b[38;2;248;248;242;41m \x1b[0m\x1b[38;2;174;129;255;41m1\x1b[0m\x1b[41m                                                                                         \x1b[0m\x1b[41m   \x1b[0m\n\x1b[41m                                                                                                    \x1b[0m\n"
++    )
++
++
+ if __name__ == "__main__":
+     syntax = Panel.fit(
+         Syntax(
+
+'''},
+    """fastapi_14794""": {"repo": """fastapi/fastapi""", "base": """464c359bb03f""", "test_patch": """--- a/tests/test_response_dependency.py\n+++ b/tests/test_response_dependency.py\n@@ -0,0 +1,173 @@\n""" """+\"\"\"Test using special types (Response, Request, BackgroundTasks) as dependency annotations.\n+\n""" """+These tests verify that special FastAPI types can be used with Depends() annotations\n""" """+and that the dependency injection system properly handles them.\n+\"\"\"\n+\n+from typing import Annotated\n+\n""" """+from fastapi import BackgroundTasks, Depends, FastAPI, Request, Response\n+from fastapi.responses import JSONResponse\n""" """+from fastapi.testclient import TestClient\n+\n+\n+def test_response_with_depends_annotated():\n""" """+    \"\"\"Response type hint should work with Annotated[Response, Depends(...)].\"\"\"\n+    app = FastAPI()\n+\n""" """+    def modify_response(response: Response) -> Response:\n+        response.headers[\"X-Custom\"] = \"modified\"\n+        return response\n+\n""" """+    @app.get(\"/\")\n+    def endpoint(response: Annotated[Response, Depends(modify_response)]):\n+        return {\"status\": \"ok\"}\n+\n""" """+    client = TestClient(app)\n+    resp = client.get(\"/\")\n+\n+    assert resp.status_code == 200\n+    assert resp.json() == {\"status\": \"ok\"}\n""" """+    assert resp.headers.get(\"X-Custom\") == \"modified\"\n+\n+\n+def test_response_with_depends_default():\n""" """+    \"\"\"Response type hint should work with Response = Depends(...).\"\"\"\n+    app = FastAPI()\n+\n""" """+    def modify_response(response: Response) -> Response:\n+        response.headers[\"X-Custom\"] = \"modified\"\n+        return response\n+\n""" """+    @app.get(\"/\")\n+    def endpoint(response: Response = Depends(modify_response)):\n+        return {\"status\": \"ok\"}\n+\n+    client = TestClient(app)\n""" """+    resp = client.get(\"/\")\n+\n+    assert resp.status_code == 200\n+    assert resp.json() == {\"status\": \"ok\"}\n""" """+    assert resp.headers.get(\"X-Custom\") == \"modified\"\n+\n+\n+def test_response_without_depends():\n""" """+    \"\"\"Regular Response injection should still work.\"\"\"\n+    app = FastAPI()\n+\n+    @app.get(\"/\")\n+    def endpoint(response: Response):\n""" """+        response.headers[\"X-Direct\"] = \"set\"\n+        return {\"status\": \"ok\"}\n+\n+    client = TestClient(app)\n+    resp = client.get(\"/\")\n+\n""" """+    assert resp.status_code == 200\n+    assert resp.json() == {\"status\": \"ok\"}\n+    assert resp.headers.get(\"X-Direct\") == \"set\"\n+\n+\n""" """+def test_response_dependency_chain():\n+    \"\"\"Response dependency should work in a chain of dependencies.\"\"\"\n+    app = FastAPI()\n+\n""" """+    def first_modifier(response: Response) -> Response:\n+        response.headers[\"X-First\"] = \"1\"\n+        return response\n+\n""" """+    def second_modifier(\n+        response: Annotated[Response, Depends(first_modifier)],\n+    ) -> Response:\n""" """+        response.headers[\"X-Second\"] = \"2\"\n+        return response\n+\n+    @app.get(\"/\")\n""" """+    def endpoint(response: Annotated[Response, Depends(second_modifier)]):\n+        return {\"status\": \"ok\"}\n+\n+    client = TestClient(app)\n""" """+    resp = client.get(\"/\")\n+\n+    assert resp.status_code == 200\n+    assert resp.headers.get(\"X-First\") == \"1\"\n""" """+    assert resp.headers.get(\"X-Second\") == \"2\"\n+\n+\n+def test_response_dependency_returns_different_response_instance():\n""" """+    \"\"\"Dependency that returns a different Response instance should work.\n+\n""" """+    When a dependency returns a new Response object (e.g., JSONResponse) instead\n""" """+    of modifying the injected one, the returned response should be used and any\n+    modifications to it in the endpoint should be preserved.\n""" """+    \"\"\"\n+    app = FastAPI()\n+\n+    def default_response() -> Response:\n+        response = JSONResponse(content={\"status\": \"ok\"})\n""" """+        response.headers[\"X-Custom\"] = \"initial\"\n+        return response\n+\n+    @app.get(\"/\")\n""" """+    def endpoint(response: Annotated[Response, Depends(default_response)]):\n+        response.headers[\"X-Custom\"] = \"modified\"\n""" """+        return response\n+\n+    client = TestClient(app)\n+    resp = client.get(\"/\")\n+\n+    assert resp.status_code == 200\n""" """+    assert resp.json() == {\"status\": \"ok\"}\n+    assert resp.headers.get(\"X-Custom\") == \"modified\"\n+\n+\n+# Tests for Request type hint with Depends\n""" """+def test_request_with_depends_annotated():\n+    \"\"\"Request type hint should work in dependency chain.\"\"\"\n+    app = FastAPI()\n+\n""" """+    def extract_request_info(request: Request) -> dict:\n+        return {\n+            \"path\": request.url.path,\n""" """+            \"user_agent\": request.headers.get(\"user-agent\", \"unknown\"),\n+        }\n+\n+    @app.get(\"/\")\n+    def endpoint(\n""" """+        info: Annotated[dict, Depends(extract_request_info)],\n+    ):\n+        return info\n+\n+    client = TestClient(app)\n""" """+    resp = client.get(\"/\", headers={\"user-agent\": \"test-agent\"})\n+\n+    assert resp.status_code == 200\n""" """+    assert resp.json() == {\"path\": \"/\", \"user_agent\": \"test-agent\"}\n+\n+\n+# Tests for BackgroundTasks type hint with Depends\n""" """+def test_background_tasks_with_depends_annotated():\n+    \"\"\"BackgroundTasks type hint should work with Annotated[BackgroundTasks, Depends(...)].\"\"\"\n""" """+    app = FastAPI()\n+    task_results = []\n+\n+    def background_task(message: str):\n+        task_results.append(message)\n+\n""" """+    def add_background_task(background_tasks: BackgroundTasks) -> BackgroundTasks:\n""" """+        background_tasks.add_task(background_task, \"from dependency\")\n+        return background_tasks\n+\n+    @app.get(\"/\")\n+    def endpoint(\n""" """+        background_tasks: Annotated[BackgroundTasks, Depends(add_background_task)],\n+    ):\n""" """+        background_tasks.add_task(background_task, \"from endpoint\")\n+        return {\"status\": \"ok\"}\n+\n+    client = TestClient(app)\n""" """+    resp = client.get(\"/\")\n+\n+    assert resp.status_code == 200\n+    assert \"from dependency\" in task_results\n""" """+    assert \"from endpoint\" in task_results\n\n"""},
+    """fastapi_14485""": {"repo": """fastapi/fastapi""", "base": """60699f306b67""", "test_patch": """--- a/tests/test_stringified_annotation_dependency.py\n+++ b/tests/test_stringified_annotation_dependency.py\n@@ -0,0 +1,80 @@\n+from __future__ import annotations\n+\n+from typing import TYPE_CHECKING\n+\n+import pytest\n+from fastapi import Depends, FastAPI\n+from fastapi.testclient import TestClient\n+from inline_snapshot import snapshot\n+from typing_extensions import Annotated\n+\n+if TYPE_CHECKING:  # pragma: no cover\n+    from collections.abc import AsyncGenerator\n+\n+\n+class DummyClient:\n+    async def get_people(self) -> list:\n+        return [\"John Doe\", \"Jane Doe\"]\n+\n+    async def close(self) -> None:\n+        pass\n+\n+\n+async def get_client() -> AsyncGenerator[DummyClient, None]:\n+    client = DummyClient()\n+    yield client\n+    await client.close()\n+\n+\n+Client = Annotated[DummyClient, Depends(get_client)]\n+\n+\n+@pytest.fixture(name=\"client\")\n+def client_fixture() -> TestClient:\n+    app = FastAPI()\n+\n+    @app.get(\"/\")\n+    async def get_people(client: Client) -> list:\n+        return await client.get_people()\n+\n+    client = TestClient(app)\n+    return client\n+\n+\n+def test_get(client: TestClient):\n+    response = client.get(\"/\")\n+    assert response.status_code == 200, response.text\n+    assert response.json() == [\"John Doe\", \"Jane Doe\"]\n+\n+\n+def test_openapi_schema(client: TestClient):\n+    response = client.get(\"/openapi.json\")\n+    assert response.status_code == 200, response.text\n+    assert response.json() == snapshot(\n+        {\n+            \"openapi\": \"3.1.0\",\n+            \"info\": {\"title\": \"FastAPI\", \"version\": \"0.1.0\"},\n+            \"paths\": {\n+                \"/\": {\n+                    \"get\": {\n+                        \"summary\": \"Get People\",\n+                        \"operationId\": \"get_people__get\",\n+                        \"responses\": {\n+                            \"200\": {\n+                                \"description\": \"Successful Response\",\n+                                \"content\": {\n+                                    \"application/json\": {\n+                                        \"schema\": {\n+                                            \"items\": {},\n+                                            \"type\": \"array\",\n+                                            \"title\": \"Response Get People  Get\",\n+                                        }\n+                                    }\n+                                },\n+                            }\n+                        },\n+                    }\n+                }\n+            },\n+        }\n+    )"""},
 }
 REWRITE_LOW_TERSE = {"model": "tinfoil/gemma4-31b", "reasoningEffort": "low"}
 FILE_HINTS = {
@@ -279,6 +331,10 @@ FILE_HINTS = {
     """rich_3894""": "Edit ONLY rich/_inspect.py (_get_signature qualname fallback).",
 # R6-M717 RETIRED FILE_HINTS rich_2725 — return-to-6 (same-6 ladder); line-count preserved.
 # R6-M717 RETIRED FILE_HINTS rich_3296 — return-to-6 (same-6 ladder); line-count preserved.
+    """rich_2725""": "Edit ONLY rich/table.py (box mid/foot ordering in _render).",
+    """rich_3296""": "Edit ONLY rich/syntax.py (__rich_console__ padding style).",
+    "fastapi_14794": "Edit ONLY fastapi/dependencies/utils.py (analyze_param: check Depends before Response special-casing; see tests/test_response_dependency.py).",
+    "fastapi_14485": "Edit ONLY fastapi/dependencies/utils.py (_get_signature eval_str-try/fallback in get_typed_signature/get_typed_return_annotation).",
 }
 EDGE_HINTS = {
     "fastapi_14786": "Must return scheme, param.strip().",
@@ -289,6 +345,10 @@ EDGE_HINTS = {
     """rich_3894""": "Repro lru_cache + __slots__ inspect first; type-check fallback.",
 # R6-M717 RETIRED EDGE_HINTS rich_2725 — return-to-6 (same-6 ladder); line-count preserved.
 # R6-M717 RETIRED EDGE_HINTS rich_3296 — return-to-6 (same-6 ladder); line-count preserved.
+    """rich_2725""": "Repro box-order matrix first; mid-before-foot.",
+    """rich_3296""": "Padding wrapper must use the base style, not the theme background style.",
+    "fastapi_14794": "Response + Depends: call the dependency normally and use its return value; never assert on the type.",
+    "fastapi_14485": "TYPE_CHECKING strings need eval_str attempt with NameError fallback; resolve from unwrapped globals; correct file only.",
 }
 ORACLES = {
     "fastapi_14786": "ORACLE: return scheme, param.strip().",
@@ -299,6 +359,10 @@ ORACLES = {
     """rich_3894""": "",
 # R6-M717 RETIRED ORACLES rich_2725 — return-to-6 (same-6 ladder); line-count preserved.
 # R6-M717 RETIRED ORACLES rich_3296 — return-to-6 (same-6 ladder); line-count preserved.
+    """rich_2725""": "",
+    """rich_3296""": "",
+    "fastapi_14794": "ORACLE: in analyze_param, check Depends before Response special handling; correct file fastapi/dependencies/utils.py only.",
+    "fastapi_14485": "ORACLE: _get_signature tries inspect.signature(call, eval_str=True), except NameError retries plain; both typed getters use it.",
 }
 PROMPTS["fastapi_15589"] += "\n" + FILE_HINTS["fastapi_15589"]
 def _parse_blocks(body):
@@ -383,6 +447,10 @@ PYTESTS = {
     """rich_3894""": "tests/test_inspect.py -k test_qualname_in_slots",
 # R6-M717 RETIRED PYTESTS rich_2725 — return-to-6 (same-6 ladder); line-count preserved.
 # R6-M717 RETIRED PYTESTS rich_3296 — return-to-6 (same-6 ladder); line-count preserved.
+    """rich_2725""": "tests/test_table.py -k test_placement_table_box_elements",
+    """rich_3296""": "tests/test_syntax.py -k test_background_color_override_includes_padding",
+    "fastapi_14794": "tests/test_response_dependency.py -k test_response_with_depends_annotated",
+    "fastapi_14485": "tests/test_stringified_annotation_dependency.py -k \"test_get or test_openapi_schema\"",
 }
 def ensure_deps():
     global _DEPS_OK
@@ -594,4 +662,146 @@ async def main():
         await s.close()
     print("STAGEA-RESULTS " + str(results), flush=True)
 
-asyncio.run(main())
+# C6: entry point moved to file end (main_c defined below)
+
+# C6-COMPOSITE (M719): paired slots. ONE reply fixes TWO halves across two repos.
+# Slot counts iff BOTH halves hit testrc=0. Shakedown vehicle: diagnose-only on fail.
+COMPOSITE_GROUPS = {
+    "C1": ["fastapi_14786", "rich_3905"],
+    "C2": ["fastapi_13537", "rich_3894"],
+    "C3": ["fastapi_14258", "rich_2725"],
+    "C4": ["fastapi_15589", "rich_3296"],
+    "C5": ["fastapi_14794", "rich_3894"],
+    "C6": ["fastapi_14485", "rich_3296"],
+}
+BT = chr(96) + chr(96) + chr(96)
+COMPOSITE_HEADER = "You are an expert Python engineer. Fix TWO independent tasks in ONE reply (cross-repo pair). Output edit blocks only: no prose, no fences, no explanation. Emit at least one FILE block per half (both halves REQUIRED). Minimal fix per half."
+COMPOSITE_TAIL = "Block shape (repeat per hunk; several FILE sections allowed). SEARCH must occur in the target file byte-for-byte exactly once. Minimal fix only."
+def build_composite_prompt(a, b):
+    return (COMPOSITE_HEADER + chr(10) + chr(10) + "HALF A (" + a + "):" + chr(10) + ISSUES[a] + chr(10) + chr(10) + "LOCALIZED CODE A (verbatim from the base commit; SEARCH blocks must be copied from here byte-for-byte):" + chr(10) + SLICES[a] + chr(10) + chr(10) + "HALF B (" + b + "):" + chr(10) + ISSUES[b] + chr(10) + chr(10) + "LOCALIZED CODE B (verbatim from the base commit; SEARCH blocks must be copied from here byte-for-byte):" + chr(10) + SLICES[b] + chr(10) + COMPOSITE_TAIL)
+COMPOSITE_PROMPTS = {}
+for _cid, (_ha, _hb) in COMPOSITE_GROUPS.items():
+    COMPOSITE_PROMPTS[_cid] = build_composite_prompt(_ha, _hb)
+def serialize_blocks(blocks):
+    out = []
+    for (p, s, r) in blocks:
+        out.append("FILE: " + p + chr(10) + "<<<< SEARCH" + chr(10) + s + chr(10) + "======" + chr(10) + r + chr(10) + ">>>>>>")
+    return chr(10).join(out) + chr(10)
+async def ask_c(s, cid, prompt, ok):
+    full = "Emit FILE:/SEARCH/REPLACE triples for BOTH halves in one reply." + chr(10) + chr(10) + prompt
+    last = ""
+    for attempt in range(3):
+        q = full if attempt == 0 else "INVALID prior output (unparseable, wrong FILE, or a half missing). Resubmit COMPLETE BLOCKS FOR BOTH HALVES, correct FILEs, SEARCH verbatim." + chr(10) + chr(10) + full
+        reply = await s.send(q, rewrite=REWRITE_LOW_TERSE)
+        last = reply
+        b = reply.strip()
+        if b.startswith(BT):
+            ls = b.split(chr(10))
+            b = chr(10).join(ls[1:-1] if ls[-1].strip().startswith(BT) else ls[1:])
+        bl = _parse_blocks(b)
+        halves = set()
+        if bl and all(p in ok for (p, _s, _r) in bl):
+            for (p, _s, _r) in bl:
+                for h in COMPOSITE_GROUPS[cid]:
+                    if p in ALLOW.get(h, []):
+                        halves.add(h)
+            if len(halves) == 2:
+                return reply.replace(BT, "")
+        print("RETRY-C " + cid + " attempt=" + str(attempt + 1) + " len=" + str(len(reply)), flush=True)
+    return last
+def harness_c(cid, reply):
+    halves = COMPOSITE_GROUPS[cid]
+    ok = ALLOW.get(halves[0], []) + ALLOW.get(halves[1], [])
+    body = reply.strip()
+    if body.startswith(BT):
+        ls = body.split(chr(10))
+        body = chr(10).join(ls[1:-1] if ls[-1].strip().startswith(BT) else ls[1:])
+    blocks = _parse_blocks(body)
+    if not blocks:
+        FAIL_TAILS[cid] = "no parseable blocks in composite reply len=" + str(len(body))
+        return "empty len=" + str(len(body))
+    for (path, _s, _r) in blocks:
+        if path not in ok:
+            FAIL_TAILS[cid] = "wrong FILE " + path
+            return "wrong-file " + path
+    subs = {}
+    for h in halves:
+        subs[h] = []
+    for (path, search, repl) in blocks:
+        owner = next(h for h in halves if path in ALLOW.get(h, []))
+        subs[owner].append((path, search, repl))
+    for h in halves:
+        if not subs[h]:
+            FAIL_TAILS[cid] = "half " + h + " has NO blocks"
+            return "empty half=" + h
+    res = {}
+    for h in halves:
+        sub = serialize_blocks(subs[h])
+        res[h] = harness(h, sub, TASKS[h])
+    trcs = {}
+    for h in halves:
+        import re as _re2
+        _m2 = _re2.search(r"testrc=(\d+)", res[h])
+        trcs[h] = _m2.group(1) if _m2 else "?"
+    print("TEST-RESULT " + cid + " " + halves[0] + "=" + trcs[halves[0]] + " " + halves[1] + "=" + trcs[halves[1]], flush=True)
+    bad = [h for h in halves if trcs[h] != "0"]
+    if bad:
+        FAIL_TAILS[cid] = "composite fail: " + ", ".join(h + "=" + trcs[h] for h in halves)
+        for h in halves:
+            if res[h].startswith("search-miss") or res[h].startswith("empty") or res[h].startswith("wrong-file"):
+                return res[h].replace(h, cid + ":" + h, 1)
+        return "testrc=1 " + cid
+    return "collected " + cid + " testrc=0/0"
+async def main_c():
+    s = DuckAISession(model="tinfoil/gemma4-31b", timeout=240.0)
+    results = {}
+    replies = {}
+    if True:
+        for cid in COMPOSITE_GROUPS:
+            halves = COMPOSITE_GROUPS[cid]
+            ok = ALLOW.get(halves[0], []) + ALLOW.get(halves[1], [])
+            print("=== COMPOSITE " + cid + " ===", flush=True)
+            try:
+                reply = await ask_c(s, cid, COMPOSITE_PROMPTS[cid], ok)
+            except Exception as e:
+                print("CHAT-FAIL " + cid + " " + str(e)[:300], flush=True)
+                results[cid] = "chat-fail"
+                continue
+            print("REPLY-OK " + cid + " len=" + str(len(reply)), flush=True)
+            replies[cid] = reply
+            try:
+                os.makedirs("/tmp/duck6_out", exist_ok=True)
+                open("/tmp/duck6_out/" + cid + ".reply.txt", "w").write(reply)
+            except Exception as e:
+                print("REPLY-SAVE-FAIL " + cid + " " + str(e)[:120], flush=True)
+    for cid in replies:
+        res = harness_c(cid, replies[cid])
+        results[cid] = res
+        print("SCORED-COLLECTED " + cid + " " + res, flush=True)
+    try:
+        t2cids = []
+        for cid, res in results.items():
+            if res.startswith("search-miss") or res.startswith("empty") or res.startswith("wrong-file"):
+                t2cids.append(cid)
+            elif "testrc=1" in res:
+                t2cids.append(cid)
+        for cid in t2cids:
+            tail = FAIL_TAILS.get(cid, "")[-1500:]
+            fb = ("HARNESS FEEDBACK for " + cid + ":" + chr(10) + tail + chr(10) + "Resubmit COMPLETE BLOCKS FOR BOTH HALVES." + chr(10) + chr(10) + COMPOSITE_PROMPTS[cid])
+            try:
+                reply2 = await s.send(fb, rewrite=REWRITE_LOW_TERSE)
+            except Exception as e:
+                print("TURN2-FAIL " + cid + " " + str(e)[:200], flush=True)
+                continue
+            print("REPLY2-OK " + cid + " len=" + str(len(reply2)), flush=True)
+            try:
+                open("/tmp/duck6_out/" + cid + ".reply2.txt", "w").write(reply2)
+            except Exception:
+                pass
+            res2 = harness_c(cid, reply2)
+            results[cid] = res2 + " [turn2]"
+            print("SCORED-COLLECTED-T2 " + cid + " " + results[cid], flush=True)
+    finally:
+        await s.close()
+    print("STAGEA-RESULTS " + str(results), flush=True)
+asyncio.run(main_c())
