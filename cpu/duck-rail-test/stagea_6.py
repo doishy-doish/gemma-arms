@@ -312,7 +312,7 @@ async def ask(s, pid, prompt):
 _DEPS_OK = False
 _DEPS_LOCK = threading.Lock()
 PYTESTS = {
-    """pyramid_s6a""": "tests/test_url.py -k \"test_current_route_url_with_request_query or test_current_route_url_with_query_override\"",
+    """pyramid_s6a""": "pyramid/tests/test_url.py -k \"test_current_route_url_with_request_query or test_current_route_url_with_query_override\"",
 }
 def ensure_deps():
     global _DEPS_OK
