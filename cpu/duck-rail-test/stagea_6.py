@@ -342,7 +342,7 @@ def _parse_blocks(body):
                 ei = next(j for j in range(mi + 1, n) if _END_RE.match(lines[j]))
             except StopIteration:
                 return None
-            if mi <= i + 1 or ei <= mi + 1:
+            if mi <= i + 1 or ei <= mi:
                 return None
             search = "\n".join(lines[i + 1:mi])
             repl = "\n".join(lines[mi + 1:ei])
@@ -521,7 +521,7 @@ def harness(pid, reply, t):
     sh("cd " + work + " && git apply test_patch.diff 2>&1 | head -5; echo TEST_APPLIED_RC=$?", timeout=60)
     ensure_deps()
     tf = PYTESTS.get(pid, "")
-    trc, tout = sh("cd " + work + " && " + pyenv + " python -m pytest " + tf + " -v --tb=short -W ignore::PendingDeprecationWarning -W ignore::DeprecationWarning -p no:cacheprovider > pytest_out.txt 2>&1; echo PYTEST_RC=$?; tail -15 pytest_out.txt", timeout=300)
+    trc, tout = sh("cd " + work + " && " + pyenv + " python -m pytest " + tf + " -v --tb=short -W ignore::PendingDeprecationWarning -W ignore::DeprecationWarning -p no:cacheprovider -p no:unraisableexception > pytest_out.txt 2>&1; echo PYTEST_RC=$?; tail -15 pytest_out.txt", timeout=300)
     sh("cp " + work + "/pytest_out.txt " + OUT_DIR + "/" + pid + ".pytest.txt", timeout=30)
     import re as _re
     _m = _re.search(r"PYTEST_RC=(\d+)", tout)
