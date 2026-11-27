@@ -406,7 +406,7 @@ async def ask(s, pid, prompt):
 _DEPS_OK = False
 _DEPS_LOCK = threading.Lock()
 PYTESTS = {
-    """scrapy_s6c""": """undefined -k 'test_link_extractor_aggregation'""",
+    """scrapy_s6c""": "tests/test_linkextractors.py -k \"test_link_extractor_aggregation\"",
 }
 def ensure_deps():
     global _DEPS_OK
