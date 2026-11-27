@@ -30,7 +30,7 @@ for pid, t in TASKS.items():
         print("TEST-RESULT " + pid + " fetch-fail " + str(e)[:160], flush=True)
         continue
     sh("tar xzf " + work + "/src.tgz -C " + work + " --strip-components=1", timeout=120)
-    pyenv = "PYTHONPATH=" + work
+    pyenv = "PYTHONPATH=" + work + "/src:" + work  # M741: src-layout (psf/requests ships src/requests/); flat+src both covered
     mrc, mout = sh("cd " + work + " && " + pyenv + " python -c \"import requests; print(requests.__file__)\" 2>&1 | tail -2", timeout=60)
     print("MODFILE " + pid + " requests " + mout[-160:], flush=True)
     if (work + "/") not in mout:
