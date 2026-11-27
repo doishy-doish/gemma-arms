@@ -300,6 +300,7 @@ ORACLES = {
     """rich_2725""": "",
     """rich_3296""": "",
 }
+PROMPTS["fastapi_15589"] += "\n" + FILE_HINTS["fastapi_15589"]
 def _parse_blocks(body):
     # SLICE-2 delimiter tolerance: models wrap blocks in fences and vary
     # chevrons/spacing (<<<< SEARCH, <<<<<<< SEARCH). Flex ONLY delimiter
