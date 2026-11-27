@@ -401,11 +401,18 @@ def harness(pid, reply, t):
     # PROVE it by resolving the module file before pytest.
     mod = t["repo"].split("/")[1]
     pyenv = "PYTHONPATH=" + work + ":" + work + "/src"
-    mrc, mout = sh("cd " + work + " && python -c \"open('conftest.py','w').write('import inspect as _i;_i.getargspec=getattr(_i,\"getargspec\",_i.getfullargspec)\n')\" && " + pyenv + " python -c \"import " + mod + "; print(" + mod + ".__file__)\" 2>&1 | tail -2", timeout=60)
+    open(work + "/conftest.py", "w").write("import inspect as _i\n_i.getargspec = getattr(_i, 'getargspec', _i.getfullargspec)\n")
     print("MODFILE " + pid + " " + mod + " " + mout[-160:], flush=True)
     if (work + "/") not in mout:
         FAIL_TAILS[pid] = "shadow import: " + mod + " resolves outside work dir (" + mout[-160:] + ") — tarball code would NOT run; fix PYTHONPATH/install before trusting pytest"
         return "shadow-fail " + mod
+    allow0 = (ALLOW.get(pid, [""])[0] or "")
+    fmod = allow0[:-3].replace("/", ".") if allow0.endswith(".py") else mod
+    mrc2, mout2 = sh("cd " + work + " && " + pyenv + " python -c \"import " + fmod + "; print(" + fmod + ".__file__)\" 2>&1 | tail -2", timeout=60)
+    print("MODFILE2 " + pid + " " + fmod + " " + mout2[-160:], flush=True)
+    if (work + "/") not in mout2:
+        FAIL_TAILS[pid] = "shadow import (file): " + fmod + " resolves outside work dir (" + mout2[-160:] + ") - tarball code would NOT run"
+        return "shadow-fail-file " + fmod
     applied = []
     origs = {}
     n_bl = len(blocks)
