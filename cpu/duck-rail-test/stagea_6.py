@@ -451,7 +451,7 @@ def harness(pid, reply, t):
     except Exception as e:
         print("FETCH-FAIL " + pid + " " + str(e)[:200], flush=True)
         return "fetch-fail len=" + str(len(reply))
-    sh("tar xzf " + work + "/src.tgz -C " + work + " --strip-components=1", timeout=120)
+    sh("tar xzf " + work + "/src.tgz -C " + work + " --strip-components=1 && cd " + work + " && pip install -q -e . --no-deps 2>&1 | tail -1", timeout=300)
     ensure_deps()
     # SHADOW-GUARD (M518): src-layout repos (requests) are unimportable from the
     # tarball root via pytest path insertion, so tests would silently run against
