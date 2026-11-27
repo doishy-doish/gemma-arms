@@ -1,4 +1,4 @@
-"""O4fix PYTESTS-scope for rich_3296 (vs O4 e65f8a7; one variable: single-node test scope; all 8 tasks byte-identical).
+"""R6 return-to-6 (same-6 ladder on h5-t1only-b2 base 614d8def; 2725/3296 retired to comments; T2 net restored; M717).
 F5 ladder: A=14786/13537/14258/15589 + B=3905/3894 on anchor base (B3 owed; cite M575).
 Builder: scratch/roulette/roulette-build.js. Anchor fragments byte-verbatim from scratch/duck-6-stagea_6.py; candidate fragments pyDq-escaped from scratch/roulette/spec-*.json (round-trip verified).
 """
@@ -40,8 +40,8 @@ SLICES = {
     """fastapi_14258""": "    ) -> None:\n        \"\"\"\n        Include another `APIRouter` in the same current `APIRouter`.\n\n        Read more about it in the\n        [FastAPI docs for Bigger Applications](https://fastapi.tiangolo.com/tutorial/bigger-applications/).\n\n        ## Example\n\n        ```python\n        from fastapi import APIRouter, FastAPI\n\n        app = FastAPI()\n        internal_router = APIRouter()\n        users_router = APIRouter()\n\n        @users_router.get(\"/users/\")\n        def read_users():\n            return [{\"name\": \"Rick\"}, {\"name\": \"Morty\"}]\n\n        internal_router.include_router(users_router)\n        app.include_router(internal_router)\n        ```\n        \"\"\"\n        if prefix:\n            assert prefix.startswith(\"/\"), \"A path prefix must start with '/'\"\n            assert not prefix.endswith(\"/\"), (\n                \"A path prefix must not end with '/', as the routes will start with '/'\"\n            )\n        else:\n            for r in router.routes:\n                path = getattr(r, \"path\")  # noqa: B009\n                name = getattr(r, \"name\", \"unknown\")\n                if path is not None and not path:\n                    raise FastAPIError(\n                        f\"Prefix and path cannot be both empty (path operation: {name})\"\n                    )\n        if responses is None:\n            responses = {}\n        for route in router.routes:\n            if isinstance(route, APIRoute):\n                combined_responses = {**responses, **route.responses}\n                use_response_class = get_value_or_default(\n                    route.response_class,\n                    router.default_response_class,\n                    default_response_class,\n                    self.default_response_class,\n                )\n                current_tags = []\n                if tags:\n                    current_tags.extend(tags)\n                if route.tags:\n                    current_tags.extend(route.tags)\n                current_dependencies: list[params.Depends] = []\n                if dependencies:\n                    current_dependencies.extend(dependencies)\n                if route.dependencies:\n                    current_dependencies.extend(route.dependencies)\n                current_callbacks = []\n                if callbacks:\n                    current_callbacks.extend(callbacks)\n                if route.callbacks:\n                    current_callbacks.extend(route.callbacks)\n                current_generate_unique_id = get_value_or_default(\n                    route.generate_unique_id_function,\n                    router.generate_unique_id_function,\n                    generate_unique_id_function,\n                    self.generate_unique_id_function,\n                )\n                self.add_api_route(\n                    prefix + route.path,\n                    route.endpoint,\n                    response_model=route.response_model,\n                    status_code=route.status_code,\n                    tags=current_tags,\n",
     """fastapi_15589""": "def request_params_to_args(\n    fields: Sequence[ModelField],\n    received_params: Mapping[str, Any] | QueryParams | Headers,\n) -> tuple[dict[str, Any], list[Any]]:\n    values: dict[str, Any] = {}\n    errors: list[dict[str, Any]] = []\n\n    if not fields:\n        return values, errors\n\n    first_field = fields[0]\n    fields_to_extract = fields\n    single_not_embedded_field = False\n    default_convert_underscores = True\n    if len(fields) == 1 and lenient_issubclass(\n        first_field.field_info.annotation, BaseModel\n    ):\n        fields_to_extract = get_cached_model_fields(first_field.field_info.annotation)\n        single_not_embedded_field = True\n        # If headers are in a Pydantic model, the way to disable convert_underscores\n        # would be with Header(convert_underscores=False) at the Pydantic model level\n        default_convert_underscores = getattr(\n            first_field.field_info, \"convert_underscores\", True\n        )\n\n    params_to_process: dict[str, Any] = {}\n\n    processed_keys = set()\n\n    for field in fields_to_extract:\n        alias = None\n        if isinstance(received_params, Headers):\n            # Handle fields extracted from a Pydantic Model for a header, each field\n            # doesn't have a FieldInfo of type Header with the default convert_underscores=True\n            convert_underscores = getattr(\n                field.field_info, \"convert_underscores\", default_convert_underscores\n            )\n            if convert_underscores:\n                alias = get_validation_alias(field)\n                if alias == field.name:\n                    alias = alias.replace(\"_\", \"-\")\n        value = _get_multidict_value(field, received_params, alias=alias)\n        if value is not None:\n            params_to_process[get_validation_alias(field)] = value\n        processed_keys.add(alias or get_validation_alias(field))\n\n    for key in received_params.keys():\n        if key not in processed_keys:\n            if isinstance(received_params, (ImmutableMultiDict, Headers)):\n                value = received_params.getlist(key)\n                if isinstance(value, list) and (len(value) == 1):\n                    params_to_process[key] = value[0]\n                else:\n                    params_to_process[key] = value\n            else:\n                params_to_process[key] = received_params.get(key)\n\n    if single_not_embedded_field:\n        field_info = first_field.field_info\n        assert isinstance(field_info, params.Param), (\n            \"Params must be subclasses of Param\"\n        )\n        loc: tuple[str, ...] = (field_info.in_.value,)\n        v_, errors_ = _validate_value_with_model_field(\n            field=first_field, value=params_to_process, values=values, loc=loc\n        )\n        return {first_field.name: v_}, errors_\n\n    for field in fields:\n        value = _get_multidict_value(field, received_params)\n        field_info = field.field_info\n        assert isinstance(field_info, params.Param), (\n            \"Params must be subclasses of Param\"\n        )\n        loc = (field_info.in_.value, get_validation_alias(field))\n        v_, errors_ = _validate_value_with_model_field(\n            field=field, value=value, values=values, loc=loc\n        )\n        if errors_:\n            errors.extend(errors_)\n        else:\n            values[field.name] = v_\n    return values, errors\n\n\ndef is_union_of_base_models(field_type: Any) -> bool:\n",
     """rich_3894""": "    def __rich__(self) -> Panel:\n        return Panel.fit(\n            Group(*self._render()),\n            title=self.title,\n            border_style=\"scope.border\",\n            padding=(0, 1),\n        )\n\n    def _get_signature(self, name: str, obj: Any) -> Optional[Text]:\n        \"\"\"Get a signature for a callable.\"\"\"\n        try:\n            _signature = str(signature(obj)) + \":\"\n        except ValueError:\n            _signature = \"(...)\"\n        except TypeError:\n            return None\n\n        source_filename: Optional[str] = None\n        try:\n            source_filename = getfile(obj)\n        except (OSError, TypeError):\n            # OSError is raised if obj has no source file, e.g. when defined in REPL.\n            pass\n\n        callable_name = Text(name, style=\"inspect.callable\")\n        if source_filename:\n            callable_name.stylize(f\"link file://{source_filename}\")\n        signature_text = self.highlighter(_signature)\n\n        qualname = name or getattr(obj, \"__qualname__\", name)\n\n        # If obj is a module, there may be classes (which are callable) to display\n        if inspect.isclass(obj):\n            prefix = \"class\"\n        elif inspect.iscoroutinefunction(obj):\n            prefix = \"async def\"",
-    """rich_2725""": "    def _render(\n        self, console: \"Console\", options: \"ConsoleOptions\", widths: List[int]\n    ) -> \"RenderResult\":\n        table_style = console.get_style(self.style or \"\")\n\n        border_style = table_style + console.get_style(self.border_style or \"\")\n        _column_cells = (\n            self._get_cells(console, column_index, column)\n            for column_index, column in enumerate(self.columns)\n        )\n        row_cells: List[Tuple[_Cell, ...]] = list(zip(*_column_cells))\n        _box = (\n            self.box.substitute(\n                options, safe=pick_bool(self.safe_box, console.safe_box)\n            )\n            if self.box\n            else None\n        )\n        _box = _box.get_plain_headed_box() if _box and not self.show_header else _box\n\n        new_line = Segment.line()\n\n        columns = self.columns\n        show_header = self.show_header\n        show_footer = self.show_footer\n        show_edge = self.show_edge\n        show_lines = self.show_lines\n        leading = self.leading\n\n        _Segment = Segment\n        if _box:\n            box_segments = [\n                (\n                    _Segment(_box.head_left, border_style),\n                    _Segment(_box.head_right, border_style),\n                    _Segment(_box.head_vertical, border_style),\n                ),\n                (\n                    _Segment(_box.foot_left, border_style),\n                    _Segment(_box.foot_right, border_style),\n                    _Segment(_box.foot_vertical, border_style),\n                ),\n                (\n                    _Segment(_box.mid_left, border_style),\n                    _Segment(_box.mid_right, border_style),\n                    _Segment(_box.mid_vertical, border_style),\n                ),\n            ]\n            if show_edge:\n                yield _Segment(_box.get_top(widths), border_style)\n                yield new_line\n        else:\n            box_segments = []",
-    """rich_3296""": "        self, console: \"Console\", options: \"ConsoleOptions\"\n    ) -> \"Measurement\":\n        _, right, _, left = Padding.unpack(self.padding)\n        padding = left + right\n        if self.code_width is not None:\n            width = self.code_width + self._numbers_column_width + padding + 1\n            return Measurement(self._numbers_column_width, width)\n        lines = self.code.splitlines()\n        width = (\n            self._numbers_column_width\n            + padding\n            + (max(cell_len(line) for line in lines) if lines else 0)\n        )\n        if self.line_numbers:\n            width += 1\n        return Measurement(self._numbers_column_width, width)\n\n    def __rich_console__(\n        self, console: Console, options: ConsoleOptions\n    ) -> RenderResult:\n        segments = Segments(self._get_syntax(console, options))\n        if self.padding:\n            yield Padding(\n                segments, style=self._theme.get_background_style(), pad=self.padding\n            )\n        else:\n            yield segments\n\n    def _get_syntax(\n        self,\n        console: Console,\n        options: ConsoleOptions,\n    ) -> Iterable[Segment]:\n        \"\"\"\n        Get the Segments for the Syntax object, excluding any vertical/horizontal padding\n        \"\"\"\n        transparent_background = self._get_base_style().transparent_background\n        code_width = (\n            (\n                (options.max_width - self._numbers_column_width - 1)",
+# R6-M717 RETIRED SLICES rich_2725 — return-to-6 (same-6 ladder); line-count preserved.
+# R6-M717 RETIRED SLICES rich_3296 — return-to-6 (same-6 ladder); line-count preserved.
 }
 ISSUES = {
     """fastapi_14786""": """ISSUE (fastapi_14786 in fastapi/fastapi at eacbce24c9d2):
@@ -63,8 +63,8 @@ With convert_underscores=True (the default), underscore headers must NOT be acce
 Behavior: GET /header-requires-hyphen with both x-user-id=hyphenated-value AND x_user_id=underscore-value -> 200 {"x_user_id": "hyphenated-value"} (hyphen wins); with only x_user_id=underscore-value -> 422 with detail loc ["header", "x_user_id"].
 Non-empty real fix required.""",
     """rich_3894""": "ISSUE (rich_3894 in Textualize/rich at 4d6d631a3d2d): inspect() crashes on unusual __qualname__ (non-str, e.g. lru_cache + __slots__). Fix: isinstance check, fall back to __name__ then name. Tests: test_qualname_in_slots passes without exception.",
-    """rich_2725""": "ISSUE (rich_2725 in Textualize/rich at 577def22dd83): fix table rendering order of box elements.\n\nfix table rendering order of box elements\n\n## Description\n\n* Previously \"mid\" box elements appeared in last line of table (footer), while \"footer\" box elements appeared mid table body. Reversed that order so mid is truly mid, footer is truly footer.\n* Tested with:\n\n    ```\n    table.box.head_left = '1'\n    table.box.head_vertical = '2'\n    table.box.head_right = '3'\n\n    table.box.mid_left = '4'\n    table.box.mid_vertical = '5'\n    table.box.mid_right = '6'\n\n    table.box.foot_left = '7'\n    table.box.foot_vertical = '8'\n    table.box.foot_right = '9'\n    ```\n\n  After change, correct ordering:\n\n    ```\n    +--------------------------------------------------------------------------+\n    1Date        2Title                            2  Production2    Box Office3\n    |------------ --------------------------------- ------------ --------------|\n    4Dec 20, 20195Star Wars: The Rise of Skywalker 5$275,000,0005  $375,126,1186\n    4May 25, 20185Solo: A Star Wars Story          5$275,000,0005  $393,151,3476\n    7Dec 15, 20178Star Wars Ep. VIII: The Last Jedi8$262,000,0008$1,332,539,8899\n    +--------------------------------------------------------------------------+\n    ```\n\n* All non-skipped prior automated tests pass. No automated tests added. Unclear that additional test for box ordering would add proportionate value.",
-    """rich_3296""": "ISSUE (rich_3296 in Textualize/rich at 0d7e598fe7ea): Overriding the background_color of Syntax drops the padding. Problem: __rich_console__ wraps the segments in Padding using the theme background style instead of the base style, so a background_color override does not extend into the padded area. Fix: build the Padding wrapper with the base style. Tests: test_background_color_override_includes_padding passes.",
+# R6-M717 RETIRED ISSUES rich_2725 — return-to-6 (same-6 ladder); line-count preserved.
+# R6-M717 RETIRED ISSUES rich_3296 — return-to-6 (same-6 ladder); line-count preserved.
 }
 CONTRACT = """OUTPUT CONTRACT (follow exactly):
 - Output edit blocks only: no prose, no fences, no explanation.
@@ -86,8 +86,8 @@ ALLOW = {
     """fastapi_14258""": ["""fastapi/routing.py"""],
     """fastapi_15589""": ["""fastapi/dependencies/utils.py"""],
     """rich_3894""": ["rich/_inspect.py"],
-    """rich_2725""": ["rich/table.py"],
-    """rich_3296""": ["""rich/syntax.py"""],
+# R6-M717 RETIRED ALLOW rich_2725 — return-to-6 (same-6 ladder); line-count preserved.
+# R6-M717 RETIRED ALLOW rich_3296 — return-to-6 (same-6 ladder); line-count preserved.
 }
 PROMPTS = {}
 for _pid in ISSUES:
@@ -236,38 +236,38 @@ TASKS = {
      client = TestClient(app)
      client.cookies = ["""},
     """rich_3894""": {"repo": "Textualize/rich", "base": "4d6d631a3d2d", "test_patch": "diff --git a/tests/test_inspect.py b/tests/test_inspect.py\nindex 3f6e5b9fe8..d6972fb5ed 100644\n--- a/tests/test_inspect.py\n+++ b/tests/test_inspect.py\n@@ -404,6 +404,19 @@ class Thing:\n     assert render(module, methods=True) == expected\n \n \n+def test_qualname_in_slots():\n+    from functools import lru_cache\n+\n+    @lru_cache\n+    class Klass:\n+        __slots__ = (\"__qualname__\",)\n+\n+    try:\n+        inspect(Klass)\n+    except Exception as e:\n+        assert False, f\"Class with __qualname__ in __slots__ shouldn't raise {e}\"\n+\n+\n @pytest.mark.parametrize(\n     \"special_character,expected_replacement\",\n     (\n"},
-    """rich_2725""": {"repo": "Textualize/rich", "base": "577def22dd83", "test_patch": "--- a/tests/test_table.py\n+++ b/tests/test_table.py\n@@ -1,6 +1,7 @@\n # encoding=utf-8\n \n import io\n+from textwrap import dedent\n \n import pytest\n \n@@ -234,6 +235,134 @@ def test_section():\n     assert output == expected\n \n \n+@pytest.mark.parametrize(\n+    \"show_header,show_footer,expected\",\n+    [\n+        (\n+            False,\n+            False,\n+            dedent(\n+                \"\"\"\n+                abbbbbcbbbbbbbbbcbbbbcbbbbbd\n+                1Dec  2Skywalker2275M2375M 3\n+                4May  5Solo     5275M5393M 6\n+                ijjjjjkjjjjjjjjjkjjjjkjjjjjl\n+                7Dec  8Last Jedi8262M81333M9\n+                qrrrrrsrrrrrrrrrsrrrrsrrrrrt\n+                \"\"\"\n+            ).lstrip(),\n+        ),\n+        (\n+            True,\n+            False,\n+            dedent(\n+                \"\"\"\n+                abbbbbcbbbbbbbbbcbbbbcbbbbbd\n+                1Month2Nickname 2Cost2Gross3\n+                efffffgfffffffffgffffgfffffh\n+                4Dec  5Skywalker5275M5375M 6\n+                4May  5Solo     5275M5393M 6\n+                ijjjjjkjjjjjjjjjkjjjjkjjjjjl\n+                7Dec  8Last Jedi8262M81333M9\n+                qrrrrrsrrrrrrrrrsrrrrsrrrrrt\n+                \"\"\"\n+            ).lstrip(),\n+        ),\n+        (\n+            False,\n+            True,\n+            dedent(\n+                \"\"\"\n+                abbbbbcbbbbbbbbbcbbbbcbbbbbd\n+                1Dec  2Skywalker2275M2375M 3\n+                4May  5Solo     5275M5393M 6\n+                ijjjjjkjjjjjjjjjkjjjjkjjjjjl\n+                4Dec  5Last Jedi5262M51333M6\n+                mnnnnnonnnnnnnnnonnnnonnnnnp\n+                7MONTH8NICKNAME 8COST8GROSS9\n+                qrrrrrsrrrrrrrrrsrrrrsrrrrrt\n+                \"\"\"\n+            ).lstrip(),\n+        ),\n+        (\n+            True,\n+            True,\n+            dedent(\n+                \"\"\"\n+                abbbbbcbbbbbbbbbcbbbbcbbbbbd\n+                1Month2Nickname 2Cost2Gross3\n+                efffffgfffffffffgffffgfffffh\n+                4Dec  5Skywalker5275M5375M 6\n+                4May  5Solo     5275M5393M 6\n+                ijjjjjkjjjjjjjjjkjjjjkjjjjjl\n+                4Dec  5Last Jedi5262M51333M6\n+                mnnnnnonnnnnnnnnonnnnonnnnnp\n+                7MONTH8NICKNAME 8COST8GROSS9\n+                qrrrrrsrrrrrrrrrsrrrrsrrrrrt\n+                \"\"\"\n+            ).lstrip(),\n+        ),\n+    ],\n+)\n+def test_placement_table_box_elements(show_header, show_footer, expected):\n+    \"\"\"Ensure box drawing characters correctly positioned.\"\"\"\n+\n+    table = Table(\n+        box=box.ASCII, show_header=show_header, show_footer=show_footer, padding=0\n+    )\n+\n+    # content rows indicated by numerals, pure dividers by letters\n+    table.box.__dict__.update(\n+        top_left=\"a\",\n+        top=\"b\",\n+        top_divider=\"c\",\n+        top_right=\"d\",\n+        head_left=\"1\",\n+        head_vertical=\"2\",\n+        head_right=\"3\",\n+        head_row_left=\"e\",\n+        head_row_horizontal=\"f\",\n+        head_row_cross=\"g\",\n+        head_row_right=\"h\",\n+        mid_left=\"4\",\n+        mid_vertical=\"5\",\n+        mid_right=\"6\",\n+        row_left=\"i\",\n+        row_horizontal=\"j\",\n+        row_cross=\"k\",\n+        row_right=\"l\",\n+        foot_left=\"7\",\n+        foot_vertical=\"8\",\n+        foot_right=\"9\",\n+        foot_row_left=\"m\",\n+        foot_row_horizontal=\"n\",\n+        foot_row_cross=\"o\",\n+        foot_row_right=\"p\",\n+        bottom_left=\"q\",\n+        bottom=\"r\",\n+        bottom_divider=\"s\",\n+        bottom_right=\"t\",\n+    )\n+\n+    # add content - note headers title case, footers upper case\n+    table.add_column(\"Month\", \"MONTH\", width=5)\n+    table.add_column(\"Nickname\", \"NICKNAME\", width=9)\n+    table.add_column(\"Cost\", \"COST\", width=4)\n+    table.add_column(\"Gross\", \"GROSS\", width=5)\n+\n+    table.add_row(\"Dec\", \"Skywalker\", \"275M\", \"375M\")\n+    table.add_row(\"May\", \"Solo\", \"275M\", \"393M\")\n+    table.add_section()\n+    table.add_row(\"Dec\", \"Last Jedi\", \"262M\", \"1333M\")\n+\n+    console = Console(record=True, width=28)\n+    console.print(table)\n+    output = console.export_text()\n+    print(repr(output))\n+\n+    assert output == expected\n+\n+\n if __name__ == \"__main__\":\n     render = render_tables()\n     print(render)\n"},
-    """rich_3296""": {"""repo""": """Textualize/rich""", """base""": """0d7e598fe7ea""", "test_patch": r'''
-diff --git a/tests/test_syntax.py b/tests/test_syntax.py
-index 37cc293eb4..bbd4c7a5cb 100644
---- a/tests/test_syntax.py
-+++ b/tests/test_syntax.py
-@@ -406,6 +406,23 @@ def test_syntax_measure():
-     assert code.__rich_measure__(console, console.options) == Measurement(3, 24)
- 
- 
-+def test_background_color_override_includes_padding():
-+    """Regression test for https://github.com/Textualize/rich/issues/3295"""
-+
-+    syntax = Syntax(
-+        "x = 1",
-+        lexer="python",
-+        padding=(1, 3),
-+        background_color="red",
-+    )
-+    result = render(syntax)
-+    print(repr(result))
-+    assert (
-+        result
-+        == "\x1b[41m                                                                                                    \x1b[0m\n\x1b[41m   \x1b[0m\x1b[38;2;248;248;242;41mx\x1b[0m\x1b[38;2;248;248;242;41m \x1b[0m\x1b[38;2;255;70;137;41m=\x1b[0m\x1b[38;2;248;248;242;41m \x1b[0m\x1b[38;2;174;129;255;41m1\x1b[0m\x1b[41m                                                                                         \x1b[0m\x1b[41m   \x1b[0m\n\x1b[41m                                                                                                    \x1b[0m\n"
-+    )
-+
-+
- if __name__ == "__main__":
-     syntax = Panel.fit(
-         Syntax(
-
-'''},
+# R6-M717 RETIRED TASKS rich_2725 — return-to-6 (same-6 ladder); line-count preserved.
+# R6-M717 RETIRED TASKS rich_3296 block line 1/31 — return-to-6; line-count preserved.
+# R6-M717 RETIRED TASKS rich_3296 block line 2/31 — return-to-6; line-count preserved.
+# R6-M717 RETIRED TASKS rich_3296 block line 3/31 — return-to-6; line-count preserved.
+# R6-M717 RETIRED TASKS rich_3296 block line 4/31 — return-to-6; line-count preserved.
+# R6-M717 RETIRED TASKS rich_3296 block line 5/31 — return-to-6; line-count preserved.
+# R6-M717 RETIRED TASKS rich_3296 block line 6/31 — return-to-6; line-count preserved.
+# R6-M717 RETIRED TASKS rich_3296 block line 7/31 — return-to-6; line-count preserved.
+# R6-M717 RETIRED TASKS rich_3296 block line 8/31 — return-to-6; line-count preserved.
+# R6-M717 RETIRED TASKS rich_3296 block line 9/31 — return-to-6; line-count preserved.
+# R6-M717 RETIRED TASKS rich_3296 block line 10/31 — return-to-6; line-count preserved.
+# R6-M717 RETIRED TASKS rich_3296 block line 11/31 — return-to-6; line-count preserved.
+# R6-M717 RETIRED TASKS rich_3296 block line 12/31 — return-to-6; line-count preserved.
+# R6-M717 RETIRED TASKS rich_3296 block line 13/31 — return-to-6; line-count preserved.
+# R6-M717 RETIRED TASKS rich_3296 block line 14/31 — return-to-6; line-count preserved.
+# R6-M717 RETIRED TASKS rich_3296 block line 15/31 — return-to-6; line-count preserved.
+# R6-M717 RETIRED TASKS rich_3296 block line 16/31 — return-to-6; line-count preserved.
+# R6-M717 RETIRED TASKS rich_3296 block line 17/31 — return-to-6; line-count preserved.
+# R6-M717 RETIRED TASKS rich_3296 block line 18/31 — return-to-6; line-count preserved.
+# R6-M717 RETIRED TASKS rich_3296 block line 19/31 — return-to-6; line-count preserved.
+# R6-M717 RETIRED TASKS rich_3296 block line 20/31 — return-to-6; line-count preserved.
+# R6-M717 RETIRED TASKS rich_3296 block line 21/31 — return-to-6; line-count preserved.
+# R6-M717 RETIRED TASKS rich_3296 block line 22/31 — return-to-6; line-count preserved.
+# R6-M717 RETIRED TASKS rich_3296 block line 23/31 — return-to-6; line-count preserved.
+# R6-M717 RETIRED TASKS rich_3296 block line 24/31 — return-to-6; line-count preserved.
+# R6-M717 RETIRED TASKS rich_3296 block line 25/31 — return-to-6; line-count preserved.
+# R6-M717 RETIRED TASKS rich_3296 block line 26/31 — return-to-6; line-count preserved.
+# R6-M717 RETIRED TASKS rich_3296 block line 27/31 — return-to-6; line-count preserved.
+# R6-M717 RETIRED TASKS rich_3296 block line 28/31 — return-to-6; line-count preserved.
+# R6-M717 RETIRED TASKS rich_3296 block line 29/31 — return-to-6; line-count preserved.
+# R6-M717 RETIRED TASKS rich_3296 block line 30/31 — return-to-6; line-count preserved.
+# R6-M717 RETIRED TASKS rich_3296 block line 31/31 — return-to-6; line-count preserved.
 }
 REWRITE_LOW_TERSE = {"model": "tinfoil/gemma4-31b", "reasoningEffort": "low"}
 FILE_HINTS = {
@@ -277,8 +277,8 @@ FILE_HINTS = {
     "fastapi_14258": "Edit ONLY fastapi/routing.py (APIRouter.include_router self-guard, AssertionError).",
     "fastapi_15589": "Edit ONLY fastapi/dependencies/utils.py (query/cookie/header model extra params). Output a REAL diff, never empty.",
     """rich_3894""": "Edit ONLY rich/_inspect.py (_get_signature qualname fallback).",
-    """rich_2725""": "Edit ONLY rich/table.py (box mid/foot ordering in _render).",
-    """rich_3296""": "Edit ONLY rich/syntax.py (__rich_console__ padding style).",
+# R6-M717 RETIRED FILE_HINTS rich_2725 — return-to-6 (same-6 ladder); line-count preserved.
+# R6-M717 RETIRED FILE_HINTS rich_3296 — return-to-6 (same-6 ladder); line-count preserved.
 }
 EDGE_HINTS = {
     "fastapi_14786": "Must return scheme, param.strip().",
@@ -287,8 +287,8 @@ EDGE_HINTS = {
     "fastapi_14258": "Raise AssertionError with exact message on router.include_router(router).",
     "fastapi_15589": "Non-empty diff required; empty output = FAIL, retry.",
     """rich_3894""": "Repro lru_cache + __slots__ inspect first; type-check fallback.",
-    """rich_2725""": "Repro box-order matrix first; mid-before-foot.",
-    """rich_3296""": "Padding wrapper must use the base style, not the theme background style.",
+# R6-M717 RETIRED EDGE_HINTS rich_2725 — return-to-6 (same-6 ladder); line-count preserved.
+# R6-M717 RETIRED EDGE_HINTS rich_3296 — return-to-6 (same-6 ladder); line-count preserved.
 }
 ORACLES = {
     "fastapi_14786": "ORACLE: return scheme, param.strip().",
@@ -297,8 +297,8 @@ ORACLES = {
     "fastapi_14258": "ORACLE: raise AssertionError with EXACT message: Cannot include the same APIRouter instance into itself. Did you mean to include a different router? (test uses match= on this string).",
     "fastapi_15589": "ORACLE: mark BOTH the converted alias and the original field alias as processed (gold adds processed_keys for the lookup alias AND get_validation_alias(field)); non-empty diff required; empty output = FAIL.",
     """rich_3894""": "",
-    """rich_2725""": "",
-    """rich_3296""": "",
+# R6-M717 RETIRED ORACLES rich_2725 — return-to-6 (same-6 ladder); line-count preserved.
+# R6-M717 RETIRED ORACLES rich_3296 — return-to-6 (same-6 ladder); line-count preserved.
 }
 PROMPTS["fastapi_15589"] += "\n" + FILE_HINTS["fastapi_15589"]
 def _parse_blocks(body):
@@ -381,8 +381,8 @@ PYTESTS = {
     "fastapi_14258": "tests/test_router_circular_import.py",
     "fastapi_15589": "tests/test_query_cookie_header_model_extra_params.py",
     """rich_3894""": "tests/test_inspect.py -k test_qualname_in_slots",
-    """rich_2725""": "tests/test_table.py -k test_placement_table_box_elements",
-    """rich_3296""": "tests/test_syntax.py -k test_background_color_override_includes_padding",
+# R6-M717 RETIRED PYTESTS rich_2725 — return-to-6 (same-6 ladder); line-count preserved.
+# R6-M717 RETIRED PYTESTS rich_3296 — return-to-6 (same-6 ladder); line-count preserved.
 }
 def ensure_deps():
     global _DEPS_OK
@@ -573,7 +573,7 @@ async def main():
                 t2pids.append(pid)
             elif "testrc=1" in res:
                 t2pids.append(pid)
-        for pid in t2pids[:0]:  # H5 T1-only: T2 block intact but never runs
+        for pid in t2pids:  # R6: T2 net restored (return-to-6 baseline, M717)
             tail = FAIL_TAILS.get(pid, "")[-1500:]
             fb = ("HARNESS FEEDBACK on your prior BLOCKS for " + pid + ":\n" + tail
                   + "\nResubmit BLOCKS ONLY (same contract: FILE:/SEARCH/======/>>>>>>, SEARCH copied verbatim from LOCALIZED CODE). Minimal fix only.\n\n" + PROMPTS[pid])
