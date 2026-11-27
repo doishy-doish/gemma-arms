@@ -1,3 +1,7 @@
+# DIET-A control (M754 paired prompt-compression test on r6-same6 base; one variable = ISSUES text).
+# MISTAKES-IN-FILE: CONTRACT verbatim reuse (M723); fleet deps (M722); no same-bytes fire without paired-control justification (M631: A is the concurrent control, not variance fishing); ISSUES swap verified entry-by-entry, all else byte-identical (count+content asserts, M670).
+# WHERE IT FAILED: verdicts owed vs M754 (A predicts 5-6/6 band control; B predicts >=5/6 hold -- skeleton keeps mechanism tokens per R1; T3b killed behavior-only, B is NOT behavior-only).
+# DIET-A = r6-same6 bytes verbatim (concurrent control for paired diet comparison).
 """R6 return-to-6 (same-6 ladder on h5-t1only-b2 base 614d8def; 2725/3296 retired to comments; T2 net restored; M717).
 F5 ladder: A=14786/13537/14258/15589 + B=3905/3894 on anchor base (B3 owed; cite M575).
 Builder: scratch/roulette/roulette-build.js. Anchor fragments byte-verbatim from scratch/duck-6-stagea_6.py; candidate fragments pyDq-escaped from scratch/roulette/spec-*.json (round-trip verified).
