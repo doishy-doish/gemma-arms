@@ -1,4 +1,4 @@
-"""ROULETTE stagea (DRY-RUN, not fired) — seed 7, pool v1.
+"""O6 ISSUE-rewrite on fastapi_15589 (vs F7 6c7eaa4; one variable: causal localization cues, NO mechanism, NO new identifiers).
 F5 ladder: A=14786/13537/14258/15589 + B=3905/3894 on anchor base (B3 owed; cite M575).
 Builder: scratch/roulette/roulette-build.js. Anchor fragments byte-verbatim from scratch/duck-6-stagea_6.py; candidate fragments pyDq-escaped from scratch/roulette/spec-*.json (round-trip verified).
 """
@@ -57,9 +57,9 @@ closes #13533""",
 Show a clear error on attempt to include a router into itself: router.include_router(router) must raise AssertionError with the EXACT message: Cannot include the same APIRouter instance into itself. Did you mean to include a different router?
 (The test uses match= on this exact string.)""",
     """fastapi_15589""": """ISSUE (fastapi_15589 in fastapi/fastapi at 22b02e26f9e8):
-With convert_underscores=True (the default), underscore headers must NOT be accepted: only hyphen-separated header names validate; apps opt into underscores via convert_underscores=False.
+With convert_underscores=True (the default), underscore headers must NOT be accepted: only hyphen-separated header names validate; apps opt into underscores via convert_underscores=False. The Headers branch of request_params_to_args derives TWO keys per field -- the lookup alias and get_validation_alias(field) -- but records only one in processed_keys; unrecorded keys fall through to the extra-params loop.
 Behavior: GET /header-requires-hyphen with both x-user-id=hyphenated-value AND x_user_id=underscore-value -> 200 {"x_user_id": "hyphenated-value"} (hyphen wins); with only x_user_id=underscore-value -> 422 with detail loc ["header", "x_user_id"].
-Non-empty real fix required.""",
+Non-empty real fix required; aim the fix at the Headers-branch key bookkeeping.
     """rich_3894""": "ISSUE (rich_3894 in Textualize/rich at 4d6d631a3d2d): inspect() crashes on unusual __qualname__ (non-str, e.g. lru_cache + __slots__). Fix: isinstance check, fall back to __name__ then name. Tests: test_qualname_in_slots passes without exception.",
 }
 CONTRACT = """OUTPUT CONTRACT (follow exactly):
