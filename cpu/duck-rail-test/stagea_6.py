@@ -482,6 +482,19 @@ def harness(pid, reply, t):
     if str(_ptr) != "0":
         FAIL_TAILS[pid] = "pytest failed (pytest_rc=" + str(_ptr) + " blocks " + str(len(applied)) + "/" + str(n_bl) + "):\n" + tout[-1500:]
     print("APPLIED " + pid + " " + str(len(applied)) + "/" + str(n_bl) + " blocks", flush=True)
+    # Q1 SLICER (M596 paired pilot, diagnostic-only): record which lines of the
+    # applied files the target test executes, via a stdlib settrace plugin.
+    # Never fails the task; verdict comes from the TEST-RESULT above.
+    try:
+        _plug = "import sys, os, atexit\n_seen = set()\n_root = os.environ.get(\"SLICER_ROOT\", \"\")\n_out = os.environ.get(\"SLICER_OUT\", \"slicer_lines.txt\")\ndef _tr(fr, ev, ag):\n    fn = fr.f_code.co_filename\n    if ev == \"line\" and fn.startswith(_root) and fn.endswith(\".py\") and \"/tests/\" not in fn:\n        _seen.add((fn[len(_root):], fr.f_lineno))\n    return _tr\ndef _sv():\n    try:\n        open(_out, \"w\").write(\"\\n\".join(sorted(s + \":\" + str(n) for s, n in _seen)) + \"\\n\")\n    except Exception:\n        pass\nsys.settrace(_tr)\natexit.register(_sv)\n"
+        open(work + "/slicer_plugin.py", "w").write(_plug)
+        _senv = "SLICER_ROOT=" + work + " SLICER_OUT=" + work + "/slicer_lines.txt PYTHONPATH=" + work + ":" + work + "/src"
+        sh("cd " + work + " && " + _senv + " python -m pytest " + tf + " -q --tb=no -p no:cacheprovider -p slicer_plugin > slicer_out.txt 2>&1", timeout=300)
+        _slines = open(work + "/slicer_lines.txt").read().split("\n") if os.path.exists(work + "/slicer_lines.txt") else []
+        _hit = [x for x in _slines if x.split(":")[0].lstrip("/") in applied]
+        print("SLICER-LINES " + pid + " n=" + str(len(_hit)) + " e.g. " + ";".join(_hit[:12]), flush=True)
+    except Exception as _se:
+        print("SLICER-FAIL " + pid + " " + str(_se)[:160], flush=True)
     return "collected len=" + str(len(reply)) + " testrc=" + _ptr + " blocks=" + str(len(applied)) + "/" + str(n_bl)
 
 async def main():
