@@ -59,7 +59,7 @@ PROMPTS = {}
 for _pid in ISSUES:
     PROMPTS[_pid] = "You are an expert Python engineer. Minimal fix only.\n\n" + ISSUES[_pid] + "\n\nLOCALIZED CODE (verbatim from the base commit; SEARCH blocks must be copied from here byte-for-byte):\n" + SLICES[_pid] + "\n" + CONTRACT
 TASKS = {
-    """rich_3296""": {"""repo""": """Textualize/rich""", """base""": """0d7e598fe7ea""", "test_patch": '''
+    """rich_3296""": {"""repo""": """Textualize/rich""", """base""": """0d7e598fe7ea""", "test_patch": r'''
 diff --git a/tests/test_syntax.py b/tests/test_syntax.py
 index 37cc293eb4..bbd4c7a5cb 100644
 --- a/tests/test_syntax.py
