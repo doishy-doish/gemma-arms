@@ -56,7 +56,7 @@ print("TEST-APPLY " + PID + " " + tout[-200:], flush=True)
 assert "TEST_APPLIED_RC=0" in tout, "test-apply-fail"
 brc, bout = sh("cd " + work + " && " + pyenv + " python -m pytest " + PYTEST + " -k \"" + KEXPR + "\" -q --tb=line -W ignore::PendingDeprecationWarning -W ignore::DeprecationWarning -p no:cacheprovider -p no:unraisableexception > basefail_out.txt 2>&1; echo BASE_RC=$?; tail -8 basefail_out.txt", timeout=600)
 print("BASE-FAIL-PROOF " + PID + " " + bout[-600:], flush=True)
-sbrc, sbout = sh("grep -aE \"passed|failed|error\" " + work + "/basefail_out.txt | tail -4, timeout=30)
+sbrc, sbout = sh("grep -aE \"passed|failed|error\" " + work + "/basefail_out.txt | tail -4", timeout=30)
 print("BASE-SUMMARY " + PID + " " + sbout[-300:], flush=True)
 open(work + "/fix.diff", "wb").write(FIXDIFF)
 assert open(work + "/fix.diff","rb").read()==FIXDIFF, "fix-write-readback"
