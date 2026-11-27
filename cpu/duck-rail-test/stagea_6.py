@@ -19,6 +19,8 @@ def sh(cmd, timeout=300):
     p = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=timeout)
     return p.returncode, ((p.stdout or "")[-2000:] + (p.stderr or "")[-2000:])
 sh("pip install -q pytest pytest-timeout pytest-httpbin pytest-mock \"urllib3<2\" chardet charset-normalizer idna certifi 2>&1 | tail -1", timeout=600)
+def _nl(s):  # M693/M742: git-2.56.1 rejects diffs without trailing NL (corrupt at last line); dataset bytes otherwise exact
+    return s if s.endswith("\n") else s + "\n"
 for pid, t in TASKS.items():
     work = "/tmp/duck6_" + pid
     sh("rm -rf " + work + " && mkdir -p " + work)
@@ -36,7 +38,7 @@ for pid, t in TASKS.items():
     if (work + "/") not in mout:
         print("TEST-RESULT " + pid + " shadow-fail " + mout[-160:], flush=True)
         continue
-    open(work + "/test_patch.diff", "w").write(base64.b64decode(t["testB64"]).decode())
+    open(work + "/test_patch.diff", "w").write(_nl(base64.b64decode(t["testB64"]).decode()))
     trc2, tout2 = sh("cd " + work + " && git apply test_patch.diff 2>&1; echo TEST_APPLIED_RC=$?", timeout=60)
     print("TEST-APPLY " + pid + " " + tout2[-200:], flush=True)
     if "TEST_APPLIED_RC=0" not in tout2:
@@ -50,7 +52,7 @@ for pid, t in TASKS.items():
     _sbrc, _sbout = sh("grep -aE \"passed|failed|error\" " + work + "/basefail_out.txt | tail -4", timeout=30)
     print("BASE-SUMMARY " + pid + " " + _sbout[-300:], flush=True)
     _seen_base[pid] = _sbout[-300:]
-    open(work + "/fix.diff", "w").write(base64.b64decode(t["fixB64"]).decode())
+    open(work + "/fix.diff", "w").write(_nl(base64.b64decode(t["fixB64"]).decode()))
     frc, fout = sh("cd " + work + " && git apply fix.diff 2>&1; echo FIX_APPLIED_RC=$?", timeout=60)
     print("FIX-APPLY " + pid + " " + fout[-200:], flush=True)
     if "FIX_APPLIED_RC=0" not in fout:
