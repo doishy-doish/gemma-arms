@@ -1,4 +1,4 @@
-"""O1 oracle-addition on fastapi_15589 (vs F7 6c7eaa4 GREEN 5/6; one variable: PROMPTS[15589] += ORACLES[15589]).
+"""O7 file-hints on 13537+3894 (vs O1v2 d5b94fb 5/6; one concept: route hints; 15589-oracle held).
 F5 ladder: A=14786/13537/14258/15589 + B=3905/3894 on anchor base (B3 owed; cite M575).
 Builder: scratch/roulette/roulette-build.js. Anchor fragments byte-verbatim from scratch/duck-6-stagea_6.py; candidate fragments pyDq-escaped from scratch/roulette/spec-*.json (round-trip verified).
 """
@@ -259,6 +259,8 @@ ORACLES = {
 }
 # O1 (M601): oracle-ADDITION on 15589 only — one variable vs F7. All other pids byte-identical de-oracled.
 PROMPTS["""fastapi_15589"""] += "\n" + ORACLES["""fastapi_15589"""]
+PROMPTS["fastapi_13537"] += "\n" + FILE_HINTS["fastapi_13537"]
+PROMPTS["""rich_3894"""] += "\n" + FILE_HINTS["""rich_3894"""]
 def _parse_blocks(body):
     # SLICE-2 delimiter tolerance: models wrap blocks in fences and vary
     # chevrons/spacing (<<<< SEARCH, <<<<<<< SEARCH). Flex ONLY delimiter
