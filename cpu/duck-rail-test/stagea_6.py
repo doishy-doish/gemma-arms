@@ -19,7 +19,7 @@ TASKS = {
 def sh(cmd, timeout=300):
     p = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=timeout)
     return p.returncode, ((p.stdout or "")[-2000:] + (p.stderr or "")[-2000:])
-sh("pip install -q pytest pytest-timeout pytest-httpbin pytest-mock \"urllib3<2\" chardet charset-normalizer idna certifi 2>&1 | tail -1", timeout=600)
+sh("pip install -q pytest pytest-timeout pytest-httpbin pytest-mock trustme \"urllib3<2\" chardet charset-normalizer idna certifi 2>&1 | tail -1", timeout=600)
 def _nl(s):  # M693/M742: git-2.56.1 rejects diffs without trailing NL (corrupt at last line); dataset bytes otherwise exact
     return s if s.endswith("\n") else s + "\n"
 for pid, t in TASKS.items():
