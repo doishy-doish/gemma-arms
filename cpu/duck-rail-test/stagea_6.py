@@ -44,7 +44,7 @@ for pid, t in TASKS.items():
     if "TEST_APPLIED_RC=0" not in tout2:
         print("TEST-RESULT " + pid + " test-apply-fail", flush=True)
         continue
-    brc, bout = sh("cd " + work + " && " + pyenv + " python -m pytest " + t["pytest"] + (" -k \"" + t["k"] + "\"" if t["k"] else "") + " -q --tb=no -W ignore::DeprecationWarning -p no:cacheprovider -p no:unraisableexception > basefail_out.txt 2>&1; echo BASE_RC=$? > base_rc.txt; tail -5 basefail_out.txt; cat base_rc.txt", timeout=300)
+    brc, bout = sh("cd " + work + " && " + pyenv + " python -m pytest " + t["pytest"] + (" -k \"" + t["k"] + "\"" if t["k"] else "") + " -q --tb=line -W ignore::DeprecationWarning -p no:cacheprovider -p no:unraisableexception > basefail_out.txt 2>&1; echo BASE_RC=$? > base_rc.txt; tail -5 basefail_out.txt; cat base_rc.txt", timeout=300)
     import re as _re2
     _bm = _re2.search(r"BASE_RC=(\d+)", bout)
     _brc = _bm.group(1) if _bm else "?"
@@ -54,6 +54,9 @@ for pid, t in TASKS.items():
     _seen_base[pid] = _sbout[-300:]
     if _brc != "0":  # M742: error cause scrolls above the 300ch window; print the evidence on non-zero base RC
         print("BASE-DETAIL " + pid + " " + bout[-1500:], flush=True)
+        _bfbrc, _bfbout = sh("grep -aE \"^FAILED|^ERROR\" " + work + "/basefail_out.txt", timeout=30)
+        if _bfbout.strip():
+            print("BASE-FAILURES " + pid + " " + _bfbout[-800:], flush=True)
     open(work + "/fix.diff", "w").write(_nl(base64.b64decode(t["fixB64"]).decode()))
     frc, fout = sh("cd " + work + " && git apply fix.diff 2>&1; echo FIX_APPLIED_RC=$?", timeout=60)
     print("FIX-APPLY " + pid + " " + fout[-200:], flush=True)
@@ -62,7 +65,8 @@ for pid, t in TASKS.items():
         continue
     crc, cout = sh("cd " + work + " && python -m py_compile " + t["src"] + " 2>&1; echo COMPILE_RC=$?", timeout=60)
     print("COMPILE " + pid + " " + cout[-200:], flush=True)
-    trc, tout = sh("cd " + work + " && " + pyenv + " python -m pytest " + t["pytest"] + (" -k \"" + t["k"] + "\"" if t["k"] else "") + " -v --tb=short -W ignore::DeprecationWarning -p no:cacheprovider -p no:unraisableexception > pytest_out.txt 2>&1; echo PYTEST_RC=$?; tail -15 pytest_out.txt", timeout=600)
+    gflags = (" -k \"" + t["k"] + "\" -v --tb=short" if t["k"] else " -q --tb=line")  # M744: whole-file gold runs -q (fast; -v wastes the 600s budget on 340 tests)
+    trc, tout = sh("cd " + work + " && " + pyenv + " python -m pytest " + t["pytest"] + gflags + " -W ignore::DeprecationWarning -p no:cacheprovider -p no:unraisableexception > pytest_out.txt 2>&1; echo PYTEST_RC=$?; tail -15 pytest_out.txt", timeout=600)
     sh("cp " + work + "/pytest_out.txt " + OUT_DIR + "/" + pid + ".pytest.txt", timeout=30)
     open(OUT_DIR + "/" + pid + ".applied.txt", "w").write("fix_rc=0 test_rc=0 pytest_out_tail:\n" + tout[-1500:])
     import re as _re
@@ -70,6 +74,11 @@ for pid, t in TASKS.items():
     _ptr = _m.group(1) if _m else "?"
     print("TEST-RESULT " + pid + " rc=" + str(trc) + " pytest_rc=" + _ptr + " " + tout[-800:], flush=True)
     _seen_testresult[pid] = _ptr
+    _gsbrc, _gsbout = sh("grep -aE \"passed|failed|error\" " + work + "/pytest_out.txt | tail -3", timeout=30)
+    print("TEST-SUMMARY " + pid + " " + _gsbout[-300:], flush=True)
+    _gfbrc, _gfbout = sh("grep -aE \"^FAILED|^ERROR\" " + work + "/pytest_out.txt", timeout=30)
+    if _gfbout.strip():
+        print("TEST-FAILURES " + pid + " " + _gfbout[-800:], flush=True)
 assert set(_seen_testresult.keys()) == set(TASKS.keys()), "missing TEST-RESULT for " + str(set(TASKS.keys()) - set(_seen_testresult.keys()))
 print("SEEN-RESULTS " + str(sorted(_seen_testresult.items())), flush=True)
 print("PROBE-DONE", flush=True)
