@@ -346,8 +346,8 @@ def ensure_deps():
         # in fastapi src). Agent never emits it; eval image has it baked. Without it every
         # pytest dies at collection (0/6 verified). Harness-only line (runners are online);
         # the submission bundle itself must still assume offline (M495a).
-        sh("pip install -q fastapi pytest pytest-timeout requests python-multipart annotated-doc starlette==0.37.2 httpx==0.27.2 2>&1 | tail -1", timeout=300)
-        sh("pip install -q tornado pyramid webtest pygments 2>&1 | tail -1", timeout=300)
+        print("NOPIP-SKIP fastapi-bundle (env-parity: no pip installs)", flush=True)
+        print("NOPIP-SKIP tornado/pyramid/webtest/pygments (env-parity: no pip installs)", flush=True)
         _DEPS_OK = True
 
 
@@ -393,7 +393,7 @@ def harness(pid, reply, t):
     except Exception as e:
         print("FETCH-FAIL " + pid + " " + str(e)[:200], flush=True)
         return "fetch-fail len=" + str(len(reply))
-    sh("tar xzf " + work + "/src.tgz -C " + work + " --strip-components=1 && cd " + work + " && pip install -q -e . --no-deps 2>&1 | tail -1", timeout=300)
+    sh("tar xzf " + work + "/src.tgz -C " + work + " --strip-components=1 && echo NO-EDITABLE-INSTALL", timeout=300)
     ensure_deps()
     # SHADOW-GUARD (M518): src-layout repos (requests) are unimportable from the
     # tarball root via pytest path insertion, so tests would silently run against
