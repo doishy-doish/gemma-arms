@@ -156,6 +156,7 @@ def ensure_deps():
         # the submission bundle itself must still assume offline (M495a).
         sh("pip install -q fastapi pytest pytest-timeout requests python-multipart annotated-doc starlette==0.37.2 httpx==0.27.2 2>&1 | tail -1", timeout=300)
         sh("pip install -q tornado 2>&1 | tail -1", timeout=300)
+        sh("pip install -q backports.ssl_match_hostname 2>&1 | tail -1", timeout=300)
         _DEPS_OK = True
 
 
