@@ -59,7 +59,7 @@ Show a clear error on attempt to include a router into itself: router.include_ro
     """fastapi_15589""": """ISSUE (fastapi_15589 in fastapi/fastapi at 22b02e26f9e8):
 With convert_underscores=True (the default), underscore headers must NOT be accepted: only hyphen-separated header names validate; apps opt into underscores via convert_underscores=False. The Headers branch of request_params_to_args derives TWO keys per field -- the lookup alias and get_validation_alias(field) -- but records only one in processed_keys; unrecorded keys fall through to the extra-params loop.
 Behavior: GET /header-requires-hyphen with both x-user-id=hyphenated-value AND x_user_id=underscore-value -> 200 {"x_user_id": "hyphenated-value"} (hyphen wins); with only x_user_id=underscore-value -> 422 with detail loc ["header", "x_user_id"].
-Non-empty real fix required; aim the fix at the Headers-branch key bookkeeping.
+Non-empty real fix required; aim the fix at the Headers-branch key bookkeeping.""",
     """rich_3894""": "ISSUE (rich_3894 in Textualize/rich at 4d6d631a3d2d): inspect() crashes on unusual __qualname__ (non-str, e.g. lru_cache + __slots__). Fix: isinstance check, fall back to __name__ then name. Tests: test_qualname_in_slots passes without exception.",
 }
 CONTRACT = """OUTPUT CONTRACT (follow exactly):
