@@ -1,3 +1,10 @@
+# DIET-B skeleton (M754 paired prompt-compression test on r6-same6 base; one variable = ISSUES text only).
+# MISTAKES-IN-FILE: CONTRACT verbatim reuse (M723); fleet deps (M722); concurrent-control justification for A re-fire (M631: paired control, not variance fishing); ISSUES swap region-bounded (M670: first-match replace corrupted SLICES in draft, caught by restore-compare, rebuilt from pristine A).
+# WHERE IT FAILED: verdicts owed vs M754 (A predicts 5-6/6 band control; B predicts >=5/6 hold -- skeleton keeps mechanism tokens per R1; T3b killed behavior-only, B is NOT behavior-only). HONEST SCOPE: ISSUES-only diet; SLICES+CONTRACT dominate the prompt, so this tests whether ISSUE prose carries load, NOT the full <2000ch system.md diet (needs Kaggle slot, HOLD M567).
+# DIET-A control (M754 paired prompt-compression test on r6-same6 base; one variable = ISSUES text).
+# MISTAKES-IN-FILE: CONTRACT verbatim reuse (M723); fleet deps (M722); no same-bytes fire without paired-control justification (M631: A is the concurrent control, not variance fishing); ISSUES swap verified entry-by-entry, all else byte-identical (count+content asserts, M670).
+# WHERE IT FAILED: verdicts owed vs M754 (A predicts 5-6/6 band control; B predicts >=5/6 hold -- skeleton keeps mechanism tokens per R1; T3b killed behavior-only, B is NOT behavior-only).
+# DIET-A = r6-same6 bytes verbatim (concurrent control for paired diet comparison).
 """R6 return-to-6 (same-6 ladder on h5-t1only-b2 base 614d8def; 2725/3296 retired to comments; T2 net restored; M717).
 F5 ladder: A=14786/13537/14258/15589 + B=3905/3894 on anchor base (B3 owed; cite M575).
 Builder: scratch/roulette/roulette-build.js. Anchor fragments byte-verbatim from scratch/duck-6-stagea_6.py; candidate fragments pyDq-escaped from scratch/roulette/spec-*.json (round-trip verified).
@@ -44,25 +51,12 @@ SLICES = {
 # R6-M717 RETIRED SLICES rich_3296 — return-to-6 (same-6 ladder); line-count preserved.
 }
 ISSUES = {
-    """fastapi_14786""": """ISSUE (fastapi_14786 in fastapi/fastapi at eacbce24c9d2):
-Strip whitespaces from `Authorization` header credentials (RFC 6750 section 2.1).
-Problem: get_authorization_scheme_param preserves leading/trailing whitespace in the credential, so `Authorization: Bearer   xxx` yields credentials `"  xxx"`.
-Fix: return scheme, param.strip().
-Tests: `Other  foobar ` -> ("Other", "foobar"); `Bearer  testtoken ` -> ("Bearer", "testtoken").""",
-    """fastapi_13537""": """ISSUE (fastapi_13537 in fastapi/fastapi at 3b4b5ab8c819):
-Form values with empty strings must be treated as missing (None default), for HTML-form compatibility. Regression from PR #12134.
-Spec: `_get_multidict_value` uses None for both absent values and None defaults. `_extract_form_body` skips None values; a later pass re-adds missing fields from request params, but a form field set to "" is seen as absent, `_get_multidict_value` returns the None default (skipped in pass 1), then pass 2 finds "" in the params and adds it, and validation chokes on "".
-Fix: track already-visited fields instead of relying on the values dict (as `request_params_to_args` already does). Keep the extra-key fix. Correct file only.
-closes #13533""",
-    """rich_3905""": "ISSUE (rich_3905 in Textualize/rich at 96dd4b60e3a7): Disabled Progress must print nothing on non-interactive consoles. Problem: stop() prints unconditionally when non-interactive, leaving a blank line even when disable=True. Fix: gate on disable first (symmetric start/stop). Tests: disabled non-interactive track emits empty string.",
-    """fastapi_14258""": """ISSUE (fastapi_14258 in fastapi/fastapi at e94028ab60d1):
-Show a clear error on attempt to include a router into itself: router.include_router(router) must raise AssertionError with the EXACT message: Cannot include the same APIRouter instance into itself. Did you mean to include a different router?
-(The test uses match= on this exact string.)""",
-    """fastapi_15589""": """ISSUE (fastapi_15589 in fastapi/fastapi at 22b02e26f9e8):
-With convert_underscores=True (the default), underscore headers must NOT be accepted: only hyphen-separated header names validate; apps opt into underscores via convert_underscores=False.
-Behavior: GET /header-requires-hyphen with both x-user-id=hyphenated-value AND x_user_id=underscore-value -> 200 {"x_user_id": "hyphenated-value"} (hyphen wins); with only x_user_id=underscore-value -> 422 with detail loc ["header", "x_user_id"].
-Non-empty real fix required.""",
-    """rich_3894""": "ISSUE (rich_3894 in Textualize/rich at 4d6d631a3d2d): inspect() crashes on unusual __qualname__ (non-str, e.g. lru_cache + __slots__). Fix: isinstance check, fall back to __name__ then name. Tests: test_qualname_in_slots passes without exception.",
+    """fastapi_14786""": """ISSUE (fastapi_14786 in fastapi/fastapi at eacbce24c9d2): get_authorization_scheme_param must strip credential whitespace (RFC 6750 2.1). Fix: return scheme, param.strip(). Tests: `Other  foobar ` -> ("Other", "foobar").""",
+    """fastapi_13537""": """ISSUE (fastapi_13537 in fastapi/fastapi at 3b4b5ab8c819): empty-string form values must be None (HTML-form compat; regress PR #12134). _get_multidict_value None for absent/None-default; _extract_form_body skips None; pass 2 re-adds "" from params -> validation chokes. Fix: track visited fields like request_params_to_args; keep extra-key fix. Correct file only. closes #13533""",
+    """rich_3905""": """ISSUE (rich_3905 in Textualize/rich at 96dd4b60e3a7): disabled non-interactive Progress stop() must print nothing. Fix: gate disable first (symmetric start/stop). Test: disabled track emits empty string.""",
+    """fastapi_14258""": """ISSUE (fastapi_14258 in fastapi/fastapi at e94028ab60d1): router.include_router(router) must raise AssertionError with EXACT message: Cannot include the same APIRouter instance into itself. Did you mean to include a different router? (test uses match=).""",
+    """fastapi_15589""": """ISSUE (fastapi_15589 in fastapi/fastapi at 22b02e26f9e8): convert_underscores=True (default): underscore headers must NOT validate; hyphen wins. GET /header-requires-hyphen with x-user-id + x_user_id -> 200 hyphen value; only x_user_id -> 422 loc ["header", "x_user_id"]. Non-empty real fix required.""",
+    """rich_3894""": """ISSUE (rich_3894 in Textualize/rich at 4d6d631a3d2d): inspect() crashes on non-str __qualname__ (lru_cache + __slots__). Fix: isinstance check, fall back __name__ then name. Test: test_qualname_in_slots passes.""",
 # R6-M717 RETIRED ISSUES rich_2725 — return-to-6 (same-6 ladder); line-count preserved.
 # R6-M717 RETIRED ISSUES rich_3296 — return-to-6 (same-6 ladder); line-count preserved.
 }
