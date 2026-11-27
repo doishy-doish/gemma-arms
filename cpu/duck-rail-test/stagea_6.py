@@ -1,4 +1,4 @@
-"""ROULETTE stagea (DRY-RUN, not fired) — seed 7, pool v1.
+"""O9 attempt-volume 3->5 (vs F7 6c7eaa4; one variable: internal attempts; tests file-search convergence for misroutes).
 F5 ladder: A=14786/13537/14258/15589 + B=3905/3894 on anchor base (B3 owed; cite M575).
 Builder: scratch/roulette/roulette-build.js. Anchor fragments byte-verbatim from scratch/duck-6-stagea_6.py; candidate fragments pyDq-escaped from scratch/roulette/spec-*.json (round-trip verified).
 """
@@ -313,7 +313,7 @@ def _parse_blocks(body):
 async def ask(s, pid, prompt):
     full = CONTRACT + " Emit exactly ONE FILE:/SEARCH/REPLACE triple; SEARCH must be a verbatim copy of source lines (full signature, no truncation) or the reply voids.\n\n" + prompt
     last = ""
-    for attempt in range(3):
+    for attempt in range(5):
         q = full if attempt == 0 else "INVALID prior output (unparseable block, wrong FILE, or ambiguous SEARCH). Resubmit BLOCKS ONLY, correct FILE, SEARCH copied verbatim from LOCALIZED CODE.\n\n" + full
         reply = await s.send(q, rewrite=REWRITE_LOW_TERSE)
         last = reply
