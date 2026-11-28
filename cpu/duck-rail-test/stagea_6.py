@@ -14,7 +14,7 @@
 # Lineage: M717-M724. This header is comment-only and changes no behavior.
 # M751 (8PARALLEL MAPPING SLIP 2026-11-28, in THIS batch): parallel ids[]/locals[] arrays drifted -- 3882 listed twice, 3518 branch never created, rich_3518 bytes pushed under branch f2p-3882 (run 46077994926 = rich_3518-by-content). Recovery same-turn: f2p-3882 PATCHed to true 3882 bytes + re-dispatched (receipt go-3882-recovery). RULE: parallel arrays banned -- single array of {branch,local,pid}; receipt asserts branch<->pid per item. WHERE THIS VEHICLE FAILED BEFORE: M657 line-26 unclosed paren (both F2P probes VOID SyntaxError); M693/M695 trailing-NL corrupt-at-last-line (rule: +NL both diffs, b64 round-trip); M722 inline_snapshot/sqlalchemy missing fleet-wide (rule: deps land in ALL vehicles same turn); M723 contract paraphrase (C6 0/6 VOID, rule: reuse CONTRACT verbatim); M748 backslash-quote nesting (f5 line-60 SyntaxError, rule: zero backslashes in sh lines). Verdicts owed x8 (runs in go-8parallel + go-3882-recovery receipts).
 # F2P PROBE (M654/M655): model-free. test-only apply -> pytest (expect FAIL), then +gold -> pytest (expect PASS).
-# pid=fastapi_11194 (M765-FIXFWD: PR-API fragments lack ---/+++ headers, prepended real a/b paths; new-file test uses a/b+@@-0,0 shape per 14360 precedent. No model calls. Ends: TEST-RESULT lines in log.
+# pid=fastapi_11194 (M776-FIXFWD2 base-swap from post-merge 740ec27 (already has test file) to PR base a7f2dbe (no test file); M765 headers kept: PR-API fragments lack ---/+++ headers, prepended real a/b paths; new-file test uses a/b+@@-0,0 shape per 14360 precedent. No model calls. Ends: TEST-RESULT lines in log.
 import os, subprocess, urllib.request, base64, sys
 import sys as _sys
 if _sys.version_info[0] < 3:
@@ -26,7 +26,7 @@ def sh(cmd, timeout=300):
     return p.returncode, (p.stdout or "") + (p.stderr or "")
 PID = "fastapi_11194"
 REPO = "fastapi/fastapi"
-BASE = "740ec2787b25"
+BASE = "a7f2dbe976bf72703376f0cd04487bfc4a849f83"
 PYTEST = "tests/test_file_and_form_order_issue_9116.py"
 KEXPR = "test_file_form_order or test_file_list_form_order"
 SRCFILE = "fastapi/dependencies/utils.py"
